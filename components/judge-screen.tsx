@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Check, X } from "lucide-react"
 import useSWR from "swr"
@@ -8,7 +8,8 @@ import { Mascot } from "@/components/mascot"
 import { TasteMeter } from "@/components/taste-meter"
 import { MicButton } from "@/components/mic-button"
 import { useTaste } from "@/hooks/use-taste"
-import { useVoice } from "@/hooks/use-voice"
+import { useGeminiLive } from "@/hooks/use-gemini-live"
+import { JUDGE_TOOLS, JUDGE_SYSTEM_INSTRUCTION } from "@/lib/live-tools"
 import type { JudgePair } from "@/lib/types"
 
 const fetcher = (u: string) => fetch(u).then((r) => r.json())
@@ -28,7 +29,7 @@ type Stage = "pick" | "why" | "result"
 export function JudgeScreen() {
   const router = useRouter()
   const { count, reward } = useTaste()
-  const { listening, listen, speak } = useVoice()
+  const live = useGeminiLive()
   const { data } = useSWR<{ pairs: JudgePair[] }>("/api/pairs", fetcher, {
     revalidateOnFocus: false,
   })
@@ -44,27 +45,88 @@ export function JudgeScreen() {
   // Randomize which side shows the good one, fresh per pair.
   const goodLeft = useMemo(() => Math.random() > 0.5, [pair?.id])
 
-  function choose(side: "left" | "right") {
-    if (!pair) return
-    const isGood = (side === "left") === goodLeft
-    setPicked(isGood ? "good" : "slop")
-    setCorrect(isGood)
-    setStage("why")
-  }
+  // Refs so the live tool handler always reads fresh values.
+  const goodLeftRef = useRef(goodLeft)
+  goodLeftRef.current = goodLeft
+  const pairRef = useRef<JudgePair | null>(pair)
+  pairRef.current = pair
 
-  function explain(reason: string) {
-    if (!pair) return
-    // The reward requires choice + a stated why. Bare picks don't count.
-    reward("judge", reason)
-    speak(correct ? "nice eye! you spotted it." : "good thinking. take another look.")
-    setStage("result")
-  }
+  const choose = useCallback(
+    (side: "left" | "right") => {
+      const p = pairRef.current
+      if (!p) return
+      const isGood = (side === "left") === goodLeftRef.current
+      setPicked(isGood ? "good" : "slop")
+      setCorrect(isGood)
+      setStage("why")
+      return isGood
+    },
+    [],
+  )
 
-  function next() {
+  const explain = useCallback(
+    (reason: string) => {
+      if (!pairRef.current) return
+      // The reward requires choice + a stated why. Bare picks don't count.
+      reward("judge", reason)
+      setStage("result")
+    },
+    [reward],
+  )
+
+  const next = useCallback(() => {
     setIdx((i) => i + 1)
     setPicked(null)
     setStage("pick")
+  }, [])
+
+  // Tell Sprout (the live model) about the pair on screen so it can react by voice.
+  function describePair(p: JudgePair, gl: boolean) {
+    return (
+      `A new pair is on screen for topic "${p.topic}". ` +
+      `Option ${gl ? "A" : "B"} is the good one (it is ${p.good_label}). ` +
+      `Option ${gl ? "B" : "A"} has a flaw (it is ${p.slop_flaw}). ` +
+      `Ask the child which one is better and why. When they answer, call pick_better.`
+    )
   }
+
+  const toggleLive = useCallback(() => {
+    if (live.status === "live" || live.status === "connecting") {
+      live.stop()
+      return
+    }
+    const p = pairRef.current
+    live.start({
+      systemInstruction: JUDGE_SYSTEM_INSTRUCTION,
+      tools: JUDGE_TOOLS,
+      greeting: p ? describePair(p, goodLeftRef.current) : "Greet the child and ask them to pick the better one.",
+      onTool: async (name, args) => {
+        if (name === "pick_better") {
+          const choice = String(args.choice || "A").toUpperCase()
+          const side = choice === "A" ? "left" : "right"
+          const isGood = choose(side)
+          const reason = args.reason ? String(args.reason) : ""
+          if (reason) explain(reason)
+          const p2 = pairRef.current
+          return {
+            correct: isGood,
+            betterIs: p2?.good_label,
+            flawWas: p2?.slop_flaw,
+          }
+        }
+        if (name === "next_round") {
+          next()
+          const np = pairs.length ? pairs[(idx + 1) % pairs.length] : null
+          if (np) {
+            // brief delay so state settles, then brief the model on the new pair
+            setTimeout(() => live.tellModel(describePair(np, Math.random() > 0.5)), 400)
+          }
+          return { ok: true }
+        }
+        return { ok: true }
+      },
+    })
+  }, [live, choose, explain, next, idx, pairs])
 
   if (!pair) {
     return (
@@ -169,11 +231,18 @@ export function JudgeScreen() {
             }}
           >
             <MicButton
-              listening={listening}
-              onClick={() => listen((t) => explain(t))}
+              listening={live.status === "live"}
+              onClick={toggleLive}
               size={64}
               label="say why"
             />
+            <span style={{ fontWeight: 800, color: "var(--ink-soft)", fontSize: 13 }}>
+              {live.status === "live"
+                ? live.speaking
+                  ? "Sprout is talking..."
+                  : "say why it's better"
+                : "tap to tell Sprout why"}
+            </span>
             <div
               style={{
                 display: "flex",

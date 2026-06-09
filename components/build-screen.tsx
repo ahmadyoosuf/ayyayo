@@ -8,9 +8,10 @@ import { MicButton } from "@/components/mic-button"
 import { Mascot } from "@/components/mascot"
 import { TasteMeter } from "@/components/taste-meter"
 import { useTaste } from "@/hooks/use-taste"
-import { useVoice } from "@/hooks/use-voice"
+import { useGeminiLive } from "@/hooks/use-gemini-live"
 import { getSessionId } from "@/lib/session"
 import { templateFor } from "@/lib/templates"
+import { BUILD_TOOLS, buildSystemInstruction } from "@/lib/live-tools"
 import type { Kind } from "@/lib/types"
 
 type Phase = "pick" | "make"
@@ -35,7 +36,7 @@ const REFINE_CHIPS = [
 export function BuildScreen() {
   const router = useRouter()
   const { count, reward } = useTaste()
-  const { listening, listen, speak } = useVoice()
+  const live = useGeminiLive()
   const [phase, setPhase] = useState<Phase>("pick")
   const [kind, setKind] = useState<Kind | null>(null)
   const [html, setHtml] = useState("")
@@ -44,6 +45,12 @@ export function BuildScreen() {
   const [loading, setLoading] = useState(false)
   const [history, setHistory] = useState<string[]>([])
   const frameWrapRef = useRef<HTMLDivElement>(null)
+
+  // Live refs so the model's tool handler always reads the freshest state.
+  const kindRef = useRef<Kind | null>(null)
+  const htmlRef = useRef("")
+  kindRef.current = kind
+  htmlRef.current = html
 
   const generate = useCallback(
     async (k: Kind, instruction: string, base?: string) => {
@@ -57,11 +64,14 @@ export function BuildScreen() {
         const data = await res.json()
         if (data.html) {
           setHtml(data.html)
+          htmlRef.current = data.html
           if (data.title) setTitle(data.title)
           if (data.persona) setPersona(data.persona)
         }
+        return data
       } catch {
         // network blip — keep whatever we have on screen
+        return null
       } finally {
         setLoading(false)
       }
@@ -69,25 +79,80 @@ export function BuildScreen() {
     [],
   )
 
-  function pick(k: Kind) {
+  const pick = useCallback((k: Kind, idea?: string) => {
     setKind(k)
+    kindRef.current = k
     setPhase("make")
     // Instant strong default from the local template — zero latency, always works.
-    // The model only runs when the kid asks for a change.
+    // The model then improves it through change_creation tool calls.
     const t = templateFor(k)
     setHtml(t.html)
-    setTitle(t.title)
+    htmlRef.current = t.html
+    setTitle(idea ? idea : t.title)
     setPersona(t.persona)
-  }
+  }, [])
 
-  function refine(instruction: string) {
-    if (!kind) return
-    setHistory((h) => [...h, instruction])
-    // A refine = a taste act: the kid said what they wanted and saw it change.
-    reward("build", instruction)
-    speak("ok! making it " + instruction)
-    generate(kind, instruction, html)
-  }
+  const refine = useCallback(
+    (instruction: string) => {
+      const k = kindRef.current
+      if (!k) return
+      setHistory((h) => [...h, instruction])
+      // A refine = a taste act: the kid said what they wanted and saw it change.
+      reward("build", instruction)
+      generate(k, instruction, htmlRef.current)
+    },
+    [generate, reward],
+  )
+
+  const share = useCallback(() => {
+    sessionStorage.setItem(
+      "ayyayo_pending",
+      JSON.stringify({
+        kind: kindRef.current,
+        html: htmlRef.current,
+        title,
+        persona,
+      }),
+    )
+    live.stop()
+    router.push("/share")
+  }, [live, router, title, persona])
+
+  // The mic IS the Gemini Live session. Sprout hears raw audio and drives the
+  // app with tool calls — no STT/TTS bridge. Tap chips remain as a fallback.
+  const toggleLive = useCallback(() => {
+    if (live.status === "live" || live.status === "connecting") {
+      live.stop()
+      return
+    }
+    live.start({
+      systemInstruction: buildSystemInstruction(kindRef.current ?? undefined),
+      tools: BUILD_TOOLS,
+      greeting:
+        "The child just opened the maker. Say a one-sentence cheerful hello and ask what they want to make.",
+      onTool: async (name, args) => {
+        if (name === "make_creation") {
+          const k = String(args.kind || "game") as Kind
+          pick(k, args.idea ? String(args.idea) : undefined)
+          if (args.idea) {
+            const data = await generate(k, String(args.idea), templateFor(k).html)
+            return { made: k, nowShows: data?.title ?? k }
+          }
+          return { made: k }
+        }
+        if (name === "change_creation") {
+          const instruction = String(args.instruction || "")
+          refine(instruction)
+          return { changed: true, instruction }
+        }
+        if (name === "share_creation") {
+          share()
+          return { shared: true }
+        }
+        return { ok: true }
+      },
+    })
+  }, [live, pick, refine, share, generate])
 
   // Buddy proxy: artifact iframe asks the parent to talk to Fireworks.
   useEffect(() => {
@@ -117,14 +182,6 @@ export function BuildScreen() {
     window.addEventListener("message", onMsg)
     return () => window.removeEventListener("message", onMsg)
   }, [persona])
-
-  function share() {
-    sessionStorage.setItem(
-      "ayyayo_pending",
-      JSON.stringify({ kind, html, title, persona }),
-    )
-    router.push("/share")
-  }
 
   return (
     <main className="paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
@@ -217,17 +274,42 @@ export function BuildScreen() {
             </div>
           </div>
 
-          {/* Voice-first refine, with a tap chip for every action */}
+          {/* Voice-first: the mic opens a live talk with Sprout. Tap chips below
+              are the fallback so voice is never the only path. */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
             <MicButton
-              listening={listening}
-              onClick={() => listen((t) => refine(t))}
+              listening={live.status === "live"}
+              onClick={toggleLive}
               size={72}
-              label="tell it what to change"
+              label="talk with Sprout"
             />
-            <span style={{ fontWeight: 800, color: "var(--ink-soft)", fontSize: 14 }}>
-              {listening ? "listening..." : "tap & say what to change"}
+            <span style={{ fontWeight: 800, color: "var(--ink-soft)", fontSize: 14, textAlign: "center" }}>
+              {live.status === "connecting"
+                ? "waking up Sprout..."
+                : live.status === "live"
+                  ? live.speaking
+                    ? "Sprout is talking..."
+                    : "listening... say what to change"
+                  : live.status === "error"
+                    ? "tap a button below to keep going"
+                    : live.status === "unsupported"
+                      ? "use the buttons below to change it"
+                      : "tap to talk with Sprout"}
             </span>
+            {live.captions ? (
+              <p
+                style={{
+                  margin: 0,
+                  maxWidth: 360,
+                  textAlign: "center",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: "var(--ink-soft)",
+                }}
+              >
+                {live.captions}
+              </p>
+            ) : null}
           </div>
 
           <div
