@@ -187,6 +187,12 @@ export function useGeminiLive() {
       // ---- handle server messages: audio playback, barge-in, tool calls ----
       async function handleMessage(msg: LiveServerMessage) {
         const player = playerRef.current
+        console.log("[v0] live msg:", {
+          audioParts: (msg.serverContent?.modelTurn?.parts ?? []).filter((p) => p.inlineData?.data).length,
+          outText: msg.serverContent?.outputTranscription?.text ?? null,
+          toolCalls: msg.toolCall?.functionCalls?.map((c) => c.name) ?? null,
+          turnComplete: !!msg.serverContent?.turnComplete,
+        })
 
         // Barge-in: model was interrupted, drop queued audio.
         if (msg.serverContent?.interrupted) {
