@@ -10,6 +10,7 @@ import { TasteMeter } from "@/components/taste-meter"
 import { useTaste } from "@/hooks/use-taste"
 import { useVoice } from "@/hooks/use-voice"
 import { getSessionId } from "@/lib/session"
+import { templateFor } from "@/lib/templates"
 import type { Kind } from "@/lib/types"
 
 type Phase = "pick" | "make"
@@ -71,8 +72,12 @@ export function BuildScreen() {
   function pick(k: Kind) {
     setKind(k)
     setPhase("make")
-    // Instant strong default, then the model improves on first refine.
-    generate(k, "create a fun first version")
+    // Instant strong default from the local template — zero latency, always works.
+    // The model only runs when the kid asks for a change.
+    const t = templateFor(k)
+    setHtml(t.html)
+    setTitle(t.title)
+    setPersona(t.persona)
   }
 
   function refine(instruction: string) {
