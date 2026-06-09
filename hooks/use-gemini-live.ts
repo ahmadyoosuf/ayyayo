@@ -21,7 +21,7 @@ import {
 // bridge. It drives the app by calling the tools we declare. The browser
 // connects directly over a WebSocket using a short-lived ephemeral token.
 
-const LIVE_MODEL = "gemini-2.0-flash-live-001"
+const LIVE_MODEL = "gemini-3.1-flash-live-preview"
 
 export type LiveStatus = "idle" | "connecting" | "live" | "error" | "unsupported"
 
@@ -130,15 +130,6 @@ export function useGeminiLive() {
               setStatus("live")
               setListening(true)
               startMicPump()
-              // Nudge the model to greet first so the child hears a voice immediately.
-              if (opts.greeting) {
-                try {
-                  session.sendClientContent({
-                    turns: [{ role: "user", parts: [{ text: opts.greeting }] }],
-                    turnComplete: true,
-                  })
-                } catch {}
-              }
             },
             onmessage: (msg: LiveServerMessage) => handleMessage(msg),
             onerror: () => {
@@ -187,12 +178,26 @@ export function useGeminiLive() {
       // ---- handle server messages: audio playback, barge-in, tool calls ----
       async function handleMessage(msg: LiveServerMessage) {
         const player = playerRef.current
-        console.log("[v0] live msg:", {
-          audioParts: (msg.serverContent?.modelTurn?.parts ?? []).filter((p) => p.inlineData?.data).length,
-          outText: msg.serverContent?.outputTranscription?.text ?? null,
-          toolCalls: msg.toolCall?.functionCalls?.map((c) => c.name) ?? null,
-          turnComplete: !!msg.serverContent?.turnComplete,
-        })
+
+        // The model is only ready to receive turns after setup completes.
+        // Send the greeting here (not in onopen) so it isn't dropped. The
+        // session ref may not be assigned yet, so retry briefly until it is.
+        if (msg.setupComplete) {
+          if (opts.greeting) {
+            const sendGreeting = (tries: number) => {
+              const s = sessionRef.current
+              if (s) {
+                try {
+                  s.sendRealtimeInput({ text: opts.greeting! })
+                } catch {}
+              } else if (tries > 0) {
+                setTimeout(() => sendGreeting(tries - 1), 50)
+              }
+            }
+            sendGreeting(20)
+          }
+          return
+        }
 
         // Barge-in: model was interrupted, drop queued audio.
         if (msg.serverContent?.interrupted) {
@@ -246,10 +251,7 @@ export function useGeminiLive() {
   // Let a loop tell the model what just happened (e.g. "the creation now shows X").
   const tellModel = useCallback((text: string) => {
     try {
-      sessionRef.current?.sendClientContent({
-        turns: [{ role: "user", parts: [{ text }] }],
-        turnComplete: true,
-      })
+      sessionRef.current?.sendRealtimeInput({ text })
     } catch {}
   }, [])
 
