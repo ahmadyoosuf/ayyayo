@@ -4,7 +4,15 @@
 // has made (choice + why + visible improvement). Levels reflect discernment.
 const LEVELS = ['new eyes', 'noticing', 'sharp', 'eagle eye', 'taste boss']
 
-export function TasteMeter({ count, pop = false }: { count: number; pop?: boolean }) {
+export function TasteMeter({
+  count,
+  pop = false,
+  compact = false,
+}: {
+  count: number
+  pop?: boolean
+  compact?: boolean
+}) {
   const level = Math.min(LEVELS.length - 1, Math.floor(count / 3))
   const inLevel = count % 3
   const pct = (inLevel / 3) * 100
@@ -15,15 +23,15 @@ export function TasteMeter({ count, pop = false }: { count: number; pop?: boolea
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
-        padding: '8px 14px',
+        gap: compact ? 10 : 12,
+        padding: compact ? '6px 12px' : '8px 14px',
         background: 'var(--paper)',
       }}
     >
       <span aria-hidden style={{ fontSize: 22 }} className={pop ? 'popin' : 'breathe'}>
         {'\u2728'}
       </span>
-      <div style={{ minWidth: 120 }}>
+      <div style={{ minWidth: compact ? 96 : 120 }}>
         <div style={{ fontWeight: 900, fontSize: 14, lineHeight: 1.1 }}>
           {LEVELS[level]}
         </div>

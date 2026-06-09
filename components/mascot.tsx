@@ -9,7 +9,7 @@ export function Mascot({
 }: {
   size?: number
   color?: string
-  mood?: 'happy' | 'think' | 'wow'
+  mood?: 'happy' | 'think' | 'wow' | 'proud' | 'sad'
   className?: string
 }) {
   return (
@@ -39,13 +39,22 @@ export function Mascot({
           <circle cx="76" cy="52" r="2" fill="#fff" />
         </g>
         {/* mouth */}
-        {mood === 'happy' && (
+        {(mood === 'happy' || mood === 'proud') && (
           <path d="M48 74q12 12 24 0" fill="none" stroke="var(--line)" strokeWidth="4" strokeLinecap="round" />
         )}
         {mood === 'think' && (
           <path d="M50 78h20" fill="none" stroke="var(--line)" strokeWidth="4" strokeLinecap="round" />
         )}
+        {mood === 'sad' && (
+          <path d="M48 80q12 -10 24 0" fill="none" stroke="var(--line)" strokeWidth="4" strokeLinecap="round" />
+        )}
         {mood === 'wow' && <ellipse cx="60" cy="78" rx="7" ry="9" fill="var(--line)" />}
+        {/* proud little sparkle */}
+        {mood === 'proud' && (
+          <g fill="var(--peach-deep)" stroke="var(--line)" strokeWidth="2">
+            <path d="M98 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" />
+          </g>
+        )}
       </g>
     </svg>
   )
