@@ -201,24 +201,35 @@ export function BuildScreen() {
   )
 
   // ── publish card: opened, named, confirmed and closed by voice OR hand ──
+  // The ref is updated SYNCHRONOUSLY (not via render): Sprout often calls
+  // name_creation and confirm_share back-to-back in the same tool batch,
+  // before React re-renders — a render-synced ref reads stale/null there and
+  // the publish silently "fails".
   const cardRef = useRef<ShareCard | null>(null)
-  cardRef.current = card
+  const updateCard = useCallback((c: ShareCard | null) => {
+    cardRef.current = c
+    setCard(c)
+  }, [])
 
   const openShare = useCallback(() => {
     if (!htmlRef.current) return false
+    if (cardRef.current) return true // already open — don't clobber the name
     const suggested = sanitizeSlug(titleRef.current) || ""
-    setCard({ name: suggested, saving: false, slug: null })
+    updateCard({ name: suggested, saving: false, slug: null })
     return true
-  }, [])
+  }, [updateCard])
 
-  const nameShare = useCallback((name: string) => {
-    setCard((c) => ({ saving: false, slug: null, ...(c ?? {}), name }))
-  }, [])
+  const nameShare = useCallback(
+    (name: string) => {
+      updateCard({ saving: false, slug: null, ...(cardRef.current ?? {}), name })
+    },
+    [updateCard],
+  )
 
   const confirmShare = useCallback(async () => {
     const c = cardRef.current
     if (!c || c.saving || c.slug || !htmlRef.current) return { ok: false }
-    setCard({ ...c, saving: true })
+    updateCard({ ...c, saving: true })
     try {
       const res = await fetch("/api/save", {
         method: "POST",
@@ -233,7 +244,7 @@ export function BuildScreen() {
       })
       const data = await res.json()
       if (data.slug) {
-        setCard({ name: c.name, saving: false, slug: data.slug })
+        updateCard({ name: c.name, saving: false, slug: data.slug })
         live.tellModel(
           `Published! The site "${String(data.slug).replace(/-/g, " ")}" is live on the internet now. Celebrate in one short sentence — say the site name, never the full address. The site is about to open in a new tab.`,
         )
@@ -250,13 +261,13 @@ export function BuildScreen() {
       }
       throw new Error("no slug")
     } catch {
-      setCard({ ...c, saving: false })
+      updateCard({ ...c, saving: false })
       live.tellModel("Publishing hiccuped. Tell the child to try once more.")
       return { ok: false }
     }
-  }, [live])
+  }, [live, updateCard])
 
-  const cancelShare = useCallback(() => setCard(null), [])
+  const cancelShare = useCallback(() => updateCard(null), [updateCard])
 
   // Open the creation in a fresh tab: the published site if it exists, else
   // the current work-in-progress as a blob document. A separate tab means
