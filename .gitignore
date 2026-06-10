@@ -21,3 +21,8 @@ node_modules
 # Context dumps / scratch
 repomix-output*
 *.tsbuildinfo
+
+# Pitch deck artifacts (script lives in scripts/make-deck.mjs)
+ayyayo-deck.pptx
+scripts/deck-preview/
+demos/
