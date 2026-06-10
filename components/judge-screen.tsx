@@ -34,7 +34,7 @@ export function JudgeScreen() {
   const [stage, setStage] = useState<Stage>("loading")
   const [slopHtml, setSlopHtml] = useState("")
   const [fixedHtml, setFixedHtml] = useState("")
-  const [showBefore, setShowBefore] = useState(false)
+  const [view, setView] = useState<"after" | "before" | "both">("after")
   const [tellId, setTellId] = useState<string>("")
   const [topic, setTopic] = useState("")
   const [wrongGuesses, setWrongGuesses] = useState<string[]>([])
@@ -60,7 +60,7 @@ export function JudgeScreen() {
     setStage("loading")
     setSlopHtml("")
     setFixedHtml("")
-    setShowBefore(false)
+    setView("after")
     setWrongGuesses([])
     setCaught(false)
     try {
@@ -213,6 +213,21 @@ export function JudgeScreen() {
           fix(String(args.instruction || "fix it"))
           return { started: true, note: "the repair is building — the app will confirm when visible" }
         }
+        if (name === "show_view") {
+          if (stageRef.current !== "done") {
+            return { ok: false, note: "there is no before/after yet — they have to catch and fix the slop first" }
+          }
+          const v = String(args.view || "after")
+          if (v === "before" || v === "after" || v === "both") {
+            setView(v)
+            return {
+              ok: true,
+              nowShowing:
+                v === "both" ? "before and after, side by side" : `the ${v} version`,
+            }
+          }
+          return { ok: false, error: "unknown view" }
+        }
         if (name === "next_round") {
           next()
           return { ok: true, note: "a fresh page is being made" }
@@ -250,18 +265,64 @@ export function JudgeScreen() {
                         : "look what YOUR call did"}
               </span>
               {stage === "done" ? (
-                <button className="chip butter" onClick={() => setShowBefore((b) => !b)}>
-                  {showBefore ? "show after" : "show before"}
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {(["before", "after", "both"] as const).map((v) => (
+                    <button
+                      key={v}
+                      className={`chip ${view === v ? "butter" : ""}`}
+                      onClick={() => setView(v)}
+                    >
+                      {v === "both" ? "side by side" : v}
+                    </button>
+                  ))}
+                </div>
               ) : null}
             </div>
-            <div style={{ flex: 1, minHeight: 300, display: "flex" }}>
-              <ArtifactFrame
-                html={stage === "done" && !showBefore ? fixedHtml : slopHtml}
-                building={stage === "loading" || stage === "fixing"}
-                title={topic || "judge this"}
-              />
-            </div>
+            {stage === "done" && view === "both" ? (
+              <div
+                style={{
+                  flex: 1,
+                  minHeight: 300,
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 8,
+                }}
+              >
+                {(
+                  [
+                    { label: "before", html: slopHtml },
+                    { label: "after", html: fixedHtml },
+                  ] as const
+                ).map((side) => (
+                  <div key={side.label} style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                    <span
+                      style={{
+                        alignSelf: "center",
+                        fontWeight: 900,
+                        fontSize: 12,
+                        background: side.label === "after" ? "var(--mint)" : "white",
+                        border: "2.5px solid var(--line)",
+                        borderRadius: 999,
+                        padding: "2px 12px",
+                      }}
+                    >
+                      {side.label}
+                    </span>
+                    <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+                      <ArtifactFrame html={side.html} title={side.label} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ flex: 1, minHeight: 300, display: "flex" }}>
+                <ArtifactFrame
+                  html={stage === "done" && view === "after" ? fixedHtml : slopHtml}
+                  building={stage === "loading" || stage === "fixing"}
+                  title={topic || "judge this"}
+                />
+              </div>
+            )}
           </div>
         </div>
       </section>

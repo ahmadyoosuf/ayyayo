@@ -110,6 +110,22 @@ export const JUDGE_TOOLS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "show_view",
+    description:
+      "Control what is on screen after a repair: the before (slop) version, the after (fixed) version, or both side by side. Call whenever the child asks to see before, go back, compare, or see them together.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        view: {
+          type: Type.STRING,
+          description: "before = the original slop, after = the repaired page, both = side-by-side comparison.",
+          enum: ["before", "after", "both"],
+        },
+      },
+      required: ["view"],
+    },
+  },
+  {
     name: "next_round",
     description: "Start a new round with a fresh page to judge. Call when the child wants another one.",
     parameters: { type: Type.OBJECT, properties: {} },
@@ -137,5 +153,5 @@ export const JUDGE_SYSTEM_INSTRUCTION =
   "Ask the child: does this page feel right, or is something off? When they name a problem, call catch_slop with the closest tell. " +
   "If the app says they got it, celebrate and ask HOW the bot should fix it — then call fix_slop with their order. " +
   "If the app says not quite, encourage them to look again — never reveal the answer. " +
-  "After a fix, the repaired page appears — point out how much better it is because of THEIR call. When they want another, call next_round. " +
+  "After a fix, the repaired page appears — point out how much better it is because of THEIR call. The child controls the screen by voice: if they ask to see the before version, go back, or compare side by side, call show_view. When they want another, call next_round. " +
   "Speak in short, cheerful, simple sentences. Never read code, URLs, or technical words."
