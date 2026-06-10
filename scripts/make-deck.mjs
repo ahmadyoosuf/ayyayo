@@ -1,8 +1,7 @@
 // ayyayo pitch deck builder. Same design language as the site:
-// paper bg, cartoon ink, plush cards, lowercase voice, no em-dashes.
+// paper bg, cartoon ink, plush cards, lowercase voice, minimal words.
 // Run: node scripts/make-deck.mjs
-// Videos: drop demos/build.mp4 and demos/deck.mp4 next to the repo root,
-// rerun, and they get embedded so they play inside the slides.
+// Videos: drop demos/build.mp4 and demos/deck.mp4, rerun, they embed.
 import Pptx from "pptxgenjs"
 import { existsSync } from "node:fs"
 
@@ -16,7 +15,7 @@ const SKY = "A6D8FF"
 const MINT = "A8E5C8"
 const WHITE = "FFFFFF"
 
-const HEAD = "Segoe UI" // rounded-clean on Windows; falls back gracefully elsewhere
+const HEAD = "Segoe UI"
 const MONO = "Consolas"
 
 const pptx = new Pptx()
@@ -69,12 +68,12 @@ function footer(slide, text) {
   })
 }
 
-function videoSlide(slide, heading, file, caption) {
+function videoSlide(slide, heading, file) {
   title(slide, heading)
-  const vw = 9.6
+  const vw = 9.9
   const vh = vw * 9 / 16
   const vx = (W - vw) / 2
-  const vy = 1.35
+  const vy = 1.45
   if (existsSync(file)) {
     plush(slide, vx - 0.12, vy - 0.12, vw + 0.24, vh + 0.24)
     slide.addMedia({ type: "video", path: file, x: vx, y: vy, w: vw, h: vh })
@@ -85,10 +84,6 @@ function videoSlide(slide, heading, file, caption) {
       { x: vx, y: vy, w: vw, h: vh, align: "center", valign: "middle", fontFace: MONO, fontSize: 16, color: INK_SOFT },
     )
   }
-  slide.addText(caption, {
-    x: vx, y: vy + vh + 0.18, w: vw, h: 0.4,
-    fontFace: HEAD, fontSize: 14, italic: false, color: INK_SOFT, align: "center",
-  })
 }
 
 // ── 1 · title ────────────────────────────────────────────────
@@ -96,21 +91,25 @@ function videoSlide(slide, heading, file, caption) {
   const s = pptx.addSlide()
   paper(s)
   if (existsSync("scripts/logo-512.png")) {
-    s.addImage({ path: "scripts/logo-512.png", x: W / 2 - 1.05, y: 1.05, w: 2.1, h: 2.1 })
+    s.addImage({ path: "scripts/logo-512.png", x: W / 2 - 1.05, y: 1.0, w: 2.1, h: 2.1 })
   }
   s.addText("ayyayo", {
-    x: 0, y: 3.25, w: W, h: 1.3,
+    x: 0, y: 3.2, w: W, h: 1.3,
     fontFace: HEAD, fontSize: 66, bold: true, color: INK, align: "center", charSpacing: -1,
   })
   s.addText("boss the bot.", {
-    x: 0, y: 4.55, w: W, h: 0.7,
+    x: 0, y: 4.5, w: W, h: 0.7,
     fontFace: HEAD, fontSize: 26, bold: true, color: INK_SOFT, align: "center",
   })
-  s.addText("voice-to-code for kids 8 to 11. they speak, the bot builds, they judge.", {
-    x: 0, y: 5.35, w: W, h: 0.5,
+  s.addText("voice-to-code for kids 8 to 11", {
+    x: 0, y: 5.25, w: W, h: 0.5,
     fontFace: HEAD, fontSize: 16, color: INK_SOFT, align: "center",
   })
-  footer(s, "SuperAI NEXT 2026 · Singapore · ayyayo.app")
+  s.addText("ayyayo.app", {
+    x: 0, y: 5.95, w: W, h: 0.6,
+    fontFace: HEAD, fontSize: 22, bold: true, color: INK, align: "center",
+  })
+  footer(s, "SuperAI NEXT 2026 · Singapore")
 }
 
 // ── 2 · what a kid does ──────────────────────────────────────
@@ -119,40 +118,38 @@ function videoSlide(slide, heading, file, caption) {
   paper(s)
   title(s, "what a kid does")
   const cards = [
-    { c: PEACH, n: "1", h: "speak it", t: "“make me a game where a dragon eats tacos”. that is the whole interface." },
-    { c: BUTTER, n: "2", h: "watch it build", t: "the app paints itself on the canvas while they are still talking." },
-    { c: SKY, n: "3", h: "make it live", t: "“publish it” puts it on their own link: dragon-tacos.ayyayo.app" },
-    { c: MINT, n: "4", h: "boss the bot", t: "the de-slop gym: catch the AI’s lazy writing, name it, order the fix." },
+    { c: PEACH, n: "1", h: "speak it", t: "“make me a game where a dragon eats tacos”" },
+    { c: BUTTER, n: "2", h: "watch it build", t: "it paints while they talk" },
+    { c: SKY, n: "3", h: "make it live", t: "“publish it” · dragon-tacos.ayyayo.app" },
+    { c: MINT, n: "4", h: "boss the bot", t: "catch the slop, order the fix" },
   ]
-  const cw = 5.85, ch = 2.35, gx = 0.45, gy = 0.45
+  const cw = 5.85, ch = 2.1, gx = 0.45, gy = 0.45
   const x0 = (W - cw * 2 - gx) / 2
-  const y0 = 1.6
+  const y0 = 1.75
   cards.forEach((card, i) => {
     const x = x0 + (i % 2) * (cw + gx)
     const y = y0 + Math.floor(i / 2) * (ch + gy)
     plush(s, x, y, cw, ch)
-    s.addShape("ellipse", { x: x + 0.3, y: y + 0.3, w: 0.55, h: 0.55, fill: { color: card.c }, line: { color: LINE, width: 1.75 } })
-    s.addText(card.n, { x: x + 0.3, y: y + 0.3, w: 0.55, h: 0.55, align: "center", valign: "middle", fontFace: HEAD, fontSize: 17, bold: true, color: LINE })
-    s.addText(card.h, { x: x + 1.05, y: y + 0.28, w: cw - 1.3, h: 0.6, fontFace: HEAD, fontSize: 21, bold: true, color: INK })
-    s.addText(card.t, { x: x + 1.05, y: y + 0.95, w: cw - 1.45, h: 1.2, fontFace: HEAD, fontSize: 14.5, color: INK_SOFT, lineSpacingMultiple: 1.15 })
+    s.addShape("ellipse", { x: x + 0.35, y: y + ch / 2 - 0.275, w: 0.55, h: 0.55, fill: { color: card.c }, line: { color: LINE, width: 1.75 } })
+    s.addText(card.n, { x: x + 0.35, y: y + ch / 2 - 0.275, w: 0.55, h: 0.55, align: "center", valign: "middle", fontFace: HEAD, fontSize: 17, bold: true, color: LINE })
+    s.addText(card.h, { x: x + 1.15, y: y + 0.45, w: cw - 1.4, h: 0.55, fontFace: HEAD, fontSize: 22, bold: true, color: INK })
+    s.addText(card.t, { x: x + 1.15, y: y + 1.1, w: cw - 1.5, h: 0.6, fontFace: HEAD, fontSize: 14.5, color: INK_SOFT })
   })
-  footer(s, "no typing, no menus, no templates. the kid is the boss, the bot does the labor.")
+  footer(s, "the kid is the boss. the bot does the labor.")
 }
 
 // ── 3 · demo: build ──────────────────────────────────────────
 {
   const s = pptx.addSlide()
   paper(s)
-  videoSlide(s, "watch: a game, spoken into existence", "demos/build.mp4",
-    "one take, real time. spoken, rendered, published, opened. no edits.")
+  videoSlide(s, "a game, spoken into existence", "demos/build.mp4")
 }
 
 // ── 4 · demo: deck ───────────────────────────────────────────
 {
   const s = pptx.addSlide()
   paper(s)
-  videoSlide(s, "watch: it makes slide decks too, live", "demos/deck.mp4",
-    "designed fresh every run, presented in the app, exported as a real .pptx.")
+  videoSlide(s, "it makes decks too. live.", "demos/deck.mp4")
 }
 
 // ── 5 · under the hood ───────────────────────────────────────
@@ -161,18 +158,17 @@ function videoSlide(slide, heading, file, caption) {
   paper(s)
   title(s, "under the hood")
   const rows = [
-    { c: SKY, tag: "Gemini Live", t: "a realtime voice agent hears the kid, talks back, and drives everything by tool calls. no buttons required." },
-    { c: PEACH, tag: "Cerebras", t: "GLM-4.7 writes the code at 1000+ tokens per second, about 750 words every second, reasoning turned off. that is why it renders as you speak." },
-    { c: BUTTER, tag: "Vercel", t: "born in v0, shipped on Vercel: hosting, functions, CLI, and wildcard DNS so every kid gets name.ayyayo.app with SSL." },
-    { c: MINT, tag: "AWS", t: "every creation is archived to S3, and Kiro helped build the publish pipeline." },
-    { c: WHITE, tag: "and more", t: "Supabase auth with invite-only access. Fireworks gpt-oss-120b powers the AI buddies living inside the kids’ creations." },
+    { c: PEACH, tag: "AWS", t: "every creation is archived to S3. Kiro helped build the pipeline." },
+    { c: BUTTER, tag: "Vercel", t: "born in v0. hosting, functions, CLI, wildcard DNS for name.ayyayo.app." },
+    { c: SKY, tag: "voice", t: "a speech-to-speech agent hears the kid and runs the whole app through tool calls." },
+    { c: MINT, tag: "speed", t: "inference at 1000+ tokens per second. that is why it renders as you speak." },
   ]
-  const rh = 0.98, gap = 0.14
-  let y = 1.5
+  const rh = 1.12, gap = 0.22
+  let y = 1.65
   for (const r of rows) {
     plush(s, 0.7, y, W - 1.4, rh)
     chip(s, 0.95, y + (rh - 0.42) / 2, r.tag, r.c, 1.7)
-    s.addText(r.t, { x: 2.85, y: y + 0.08, w: W - 3.8, h: rh - 0.16, fontFace: HEAD, fontSize: 14.5, color: INK, valign: "middle", lineSpacingMultiple: 1.1 })
+    s.addText(r.t, { x: 2.85, y: y + 0.08, w: W - 3.8, h: rh - 0.16, fontFace: HEAD, fontSize: 15.5, color: INK, valign: "middle" })
     y += rh + gap
   }
 }
@@ -181,31 +177,23 @@ function videoSlide(slide, heading, file, caption) {
 {
   const s = pptx.addSlide()
   paper(s)
-  title(s, "try it yourself")
+  title(s, "try it")
   s.addText("ayyayo.app", {
-    x: 0, y: 1.35, w: W, h: 0.95,
+    x: 0, y: 1.5, w: W, h: 0.95,
     fontFace: HEAD, fontSize: 44, bold: true, color: INK, align: "center",
   })
-  const creds = [
-    { email: "judge@ayyayo.app", pass: "taste-boss-2026", note: "pre-loaded with real creations", c: BUTTER },
-    { email: "guest@ayyayo.app", pass: "boss-the-bot-26", note: "clean slate", c: SKY },
-    { email: "builder@ayyayo.app", pass: "sharp-eyes-26", note: "clean slate", c: MINT },
-  ]
-  const cw = 3.85, ch = 2.0, gx = 0.35
-  const x0 = (W - cw * 3 - gx * 2) / 2
-  const y0 = 2.75
-  creds.forEach((cr, i) => {
-    const x = x0 + i * (cw + gx)
-    plush(s, x, y0, cw, ch, i === 0 ? WHITE : WHITE)
-    chip(s, x + 0.25, y0 + 0.25, cr.note, cr.c, cw - 0.5)
-    s.addText(cr.email, { x: x + 0.25, y: y0 + 0.85, w: cw - 0.5, h: 0.45, fontFace: MONO, fontSize: 14, bold: true, color: INK, align: "center" })
-    s.addText(cr.pass, { x: x + 0.25, y: y0 + 1.3, w: cw - 0.5, h: 0.45, fontFace: MONO, fontSize: 14, color: INK_SOFT, align: "center" })
-  })
-  s.addText("then just say: “make me a game where i dodge asteroids in space”", {
-    x: 0, y: 5.35, w: W, h: 0.5,
+  const cw = 4.6, ch = 2.0
+  const x = (W - cw) / 2
+  const y0 = 2.95
+  plush(s, x, y0, cw, ch)
+  chip(s, x + 0.4, y0 + 0.3, "pre-loaded with real creations", BUTTER, cw - 0.8)
+  s.addText("judge@ayyayo.app", { x: x + 0.3, y: y0 + 0.9, w: cw - 0.6, h: 0.45, fontFace: MONO, fontSize: 15, bold: true, color: INK, align: "center" })
+  s.addText("taste-boss-2026", { x: x + 0.3, y: y0 + 1.35, w: cw - 0.6, h: 0.45, fontFace: MONO, fontSize: 15, color: INK_SOFT, align: "center" })
+  s.addText("say: “make me a game where i dodge asteroids”", {
+    x: 0, y: 5.55, w: W, h: 0.5,
     fontFace: HEAD, fontSize: 17, bold: true, color: INK, align: "center",
   })
-  footer(s, "built solo at SuperAI NEXT 2026 · ayyayo.app")
+  footer(s, "SuperAI NEXT 2026")
 }
 
 await pptx.writeFile({ fileName: "ayyayo-deck.pptx" })
