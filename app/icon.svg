@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- ayyayo mark: the plush blob, full bleed. Same geometry as components/mascot.tsx,
+       heavier outline + bigger face so it stays legible at 16px. -->
+  <path
+    d="M60 8c28 0 46 19 46 47 0 32-22 54-46 54S14 87 14 55C14 27 32 8 60 8Z"
+    fill="#ffd86b"
+    stroke="#2b1e16"
+    stroke-width="7"
+  />
+  <circle cx="36" cy="68" r="8" fill="#ff9daa" opacity="0.7" />
+  <circle cx="84" cy="68" r="8" fill="#ff9daa" opacity="0.7" />
+  <circle cx="44" cy="52" r="7.5" fill="#2b1e16" />
+  <circle cx="76" cy="52" r="7.5" fill="#2b1e16" />
+  <circle cx="46.5" cy="49.5" r="2.5" fill="#fff" />
+  <circle cx="78.5" cy="49.5" r="2.5" fill="#fff" />
+  <path d="M46 74q14 14 28 0" fill="none" stroke="#2b1e16" stroke-width="6" stroke-linecap="round" />
+</svg>
