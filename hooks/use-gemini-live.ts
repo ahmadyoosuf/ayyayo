@@ -31,6 +31,7 @@ export function useGeminiLive() {
   const [status, setStatus] = useState<LiveStatus>("idle")
   const [speaking, setSpeaking] = useState(false)
   const [listening, setListening] = useState(false)
+  const [muted, setMuted] = useState(false)
   const [captions, setCaptions] = useState("")
 
   const sessionRef = useRef<Session | null>(null)
@@ -40,6 +41,52 @@ export function useGeminiLive() {
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const handlerRef = useRef<ToolHandler | null>(null)
   const outCaptionRef = useRef("")
+  // Guards against starting two overlapping sessions (a prime cause of the
+  // "two voices at once" bug). Once true, start() no-ops until stop().
+  const startingRef = useRef(false)
+  // True while the model is mid-turn (between first audio and turnComplete).
+  // Injecting text during this window triggers Gemini Live's documented
+  // duplicate-response bug, so we queue text and flush it on turnComplete.
+  const modelTurnRef = useRef(false)
+  const pendingTextRef = useRef<string[]>([])
+  // When muted, drop incoming audio instead of playing it — Sprout goes quiet
+  // but the mic keeps streaming (so the kid can use a nested app in peace).
+  const mutedRef = useRef(false)
+
+  const flushPendingText = () => {
+    const s = sessionRef.current
+    if (!s) return
+    const queued = pendingTextRef.current
+    pendingTextRef.current = []
+    for (const t of queued) {
+      try {
+        s.sendRealtimeInput({ text: t })
+      } catch {}
+    }
+  }
+
+  // Send text to the model, but only when it isn't mid-turn — otherwise queue
+  // it. Prevents overlapping double-speech.
+  const sendTextSafely = (text: string) => {
+    if (modelTurnRef.current) {
+      pendingTextRef.current.push(text)
+      return
+    }
+    try {
+      sessionRef.current?.sendRealtimeInput({ text })
+    } catch {}
+  }
+
+  // Hush/unhush Sprout without dropping the session. Hushing flushes any
+  // queued audio immediately so it stops talking the instant it's tapped.
+  const setHushed = useCallback((hush: boolean) => {
+    mutedRef.current = hush
+    setMuted(hush)
+    if (hush) {
+      playerRef.current?.flush()
+      setSpeaking(false)
+    }
+  }, [])
 
   const stop = useCallback(() => {
     try {
@@ -60,6 +107,11 @@ export function useGeminiLive() {
     audioCtxRef.current = null
     sessionRef.current = null
     playerRef.current = null
+    startingRef.current = false
+    modelTurnRef.current = false
+    pendingTextRef.current = []
+    mutedRef.current = false
+    setMuted(false)
     setListening(false)
     setSpeaking(false)
     setStatus("idle")
@@ -73,7 +125,12 @@ export function useGeminiLive() {
       greeting?: string
     }) => {
       if (typeof window === "undefined") return
+      // Never allow two concurrent sessions — overlapping sessions are the
+      // main source of "two voices talking at once".
+      if (startingRef.current || sessionRef.current) return
+      startingRef.current = true
       if (!navigator.mediaDevices?.getUserMedia || !(window.AudioContext || (window as any).webkitAudioContext)) {
+        startingRef.current = false
         setStatus("unsupported")
         return
       }
@@ -90,6 +147,7 @@ export function useGeminiLive() {
         const data = await res.json()
         token = data.token
       } catch {
+        startingRef.current = false
         setStatus("error")
         return
       }
@@ -105,8 +163,9 @@ export function useGeminiLive() {
         })
         streamRef.current = stream
       } catch {
-        setStatus("error")
+        // stop() resets status to idle, so set the error state after it.
         stop()
+        setStatus("error")
         return
       }
 
@@ -143,9 +202,9 @@ export function useGeminiLive() {
         })
         sessionRef.current = session
       } catch (err) {
-        console.log("[v0] live connect error:", (err as Error).message)
-        setStatus("error")
+        console.log("[ayyayo] live connect error:", (err as Error).message)
         stop()
+        setStatus("error")
         return
       }
 
@@ -183,13 +242,12 @@ export function useGeminiLive() {
         // Send the greeting here (not in onopen) so it isn't dropped. The
         // session ref may not be assigned yet, so retry briefly until it is.
         if (msg.setupComplete) {
+          startingRef.current = false
           if (opts.greeting) {
             const sendGreeting = (tries: number) => {
               const s = sessionRef.current
               if (s) {
-                try {
-                  s.sendRealtimeInput({ text: opts.greeting! })
-                } catch {}
+                sendTextSafely(opts.greeting!)
               } else if (tries > 0) {
                 setTimeout(() => sendGreeting(tries - 1), 50)
               }
@@ -203,15 +261,20 @@ export function useGeminiLive() {
         if (msg.serverContent?.interrupted) {
           player?.flush()
           setSpeaking(false)
+          modelTurnRef.current = false
         }
 
-        // Native voice audio chunks (24kHz PCM, base64).
+        // Native voice audio chunks (24kHz PCM, base64). While hushed, drop
+        // them — the session stays alive and listening, just silent.
         const parts = msg.serverContent?.modelTurn?.parts ?? []
         for (const part of parts) {
           const data = part.inlineData?.data
           if (data && player) {
-            player.enqueue(base64ToInt16(data))
-            setSpeaking(true)
+            modelTurnRef.current = true
+            if (!mutedRef.current) {
+              player.enqueue(base64ToInt16(data))
+              setSpeaking(true)
+            }
           }
         }
 
@@ -224,6 +287,10 @@ export function useGeminiLive() {
         if (msg.serverContent?.turnComplete) {
           outCaptionRef.current = ""
           setTimeout(() => setSpeaking(false), 150)
+          // Turn finished — now it's safe to deliver any text we queued
+          // mid-turn (queuing avoids Gemini Live's duplicate-response bug).
+          modelTurnRef.current = false
+          flushPendingText()
         }
 
         // Function calls: the model drives the app.
@@ -248,12 +315,12 @@ export function useGeminiLive() {
     [stop],
   )
 
-  // Let a loop tell the model what just happened (e.g. "the creation now shows X").
+  // Let a loop tell the model what just happened (e.g. "the creation now
+  // shows X"). Queued while the model is mid-turn — injecting text during a
+  // turn makes Gemini Live answer twice, with the two replies overlapping.
   const tellModel = useCallback((text: string) => {
-    try {
-      sessionRef.current?.sendRealtimeInput({ text })
-    } catch {}
+    sendTextSafely(text)
   }, [])
 
-  return { status, speaking, listening, captions, start, stop, tellModel }
+  return { status, speaking, listening, muted, setHushed, captions, start, stop, tellModel }
 }

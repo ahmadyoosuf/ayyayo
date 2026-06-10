@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Hammer, Scale } from 'lucide-react'
+import { IconHammer, IconScale } from '@/components/icons'
 import { Mascot } from '@/components/mascot'
 import { TasteMeter } from '@/components/taste-meter'
 import { useTaste } from '@/hooks/use-taste'
@@ -45,10 +45,10 @@ export function HomeScreen() {
           }}
         >
           <Link href="/build" className="tap" style={{ textDecoration: 'none', flex: '1 1 150px' }}>
-            <BigButton color="var(--peach)" icon={<Hammer size={40} strokeWidth={2.6} />} label="build" />
+            <BigButton color="var(--peach)" icon={<IconHammer size={58} />} label="build" />
           </Link>
           <Link href="/judge" className="tap" style={{ textDecoration: 'none', flex: '1 1 150px' }}>
-            <BigButton color="var(--sky)" icon={<Scale size={40} strokeWidth={2.6} />} label="judge" />
+            <BigButton color="var(--sky)" icon={<IconScale size={58} />} label="judge" />
           </Link>
         </div>
       </section>

@@ -1,13 +1,18 @@
-import { buildPrompt, streamCerebras, extractHtml } from "@/lib/cerebras"
+import { buildPrompt, streamCerebras } from "@/lib/cerebras"
 import { templateFor } from "@/lib/templates"
 import type { Kind } from "@/lib/types"
 
-export const runtime = "edge"
+// Node runtime, NOT edge: Vercel Edge Functions run on Cloudflare Workers,
+// and Cerebras' Cloudflare bot protection 403s Workers-originated fetches
+// regardless of headers. Node functions egress from AWS IPs and pass.
+export const runtime = "nodejs"
 
 // POST /api/generate { kind, instruction, baseHtml }
-// Returns one complete artifact HTML doc. Tries Cerebras GLM-4.7; on ANY
-// failure (no key, network, model error) falls back to a cached template / the
-// current HTML so the wow (runs live in-app) never depends on a live call.
+// Streams the artifact HTML as plain text so the client can render the
+// creation WHILE it is being written (the wow moment). Metadata rides in
+// headers. If Cerebras fails before the first byte, the fallback (template
+// for a fresh make / current HTML for a refine) streams instead, and the
+// x-ayyayo-source header says so — the client must never reward a fallback.
 export async function POST(req: Request) {
   let kind: Kind = "game"
   let instruction = ""
@@ -28,6 +33,21 @@ export async function POST(req: Request) {
 
   const tmpl = templateFor(kind)
   const isRefine = Boolean(baseHtml && instruction)
+  const encoder = new TextEncoder()
+
+  const headers = (source: "cerebras" | "fallback") =>
+    new Headers({
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      "x-ayyayo-source": source,
+      "x-ayyayo-title": encodeURIComponent(tmpl.title),
+      "x-ayyayo-persona": encodeURIComponent(tmpl.persona ?? ""),
+    })
+
+  const fallback = () => {
+    const html = isRefine ? (baseHtml as string) : tmpl.html
+    return new Response(html, { headers: headers("fallback") })
+  }
 
   try {
     const prompt = buildPrompt({
@@ -37,26 +57,27 @@ export async function POST(req: Request) {
       refine: isRefine ? instruction : undefined,
     })
 
-    let acc = ""
-    for await (const chunk of streamCerebras(prompt)) acc += chunk
+    const gen = streamCerebras(prompt)
 
-    const html = extractHtml(acc)
-    if (!/<html|<!doctype/i.test(html)) throw new Error("empty")
+    // Commit to Cerebras only once the first chunk actually arrives.
+    const first = await gen.next()
+    if (first.done) throw new Error("empty_stream")
 
-    return Response.json({
-      html,
-      title: tmpl.title,
-      persona: tmpl.persona,
-      source: "cerebras",
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(encoder.encode(first.value))
+        try {
+          for await (const chunk of gen) controller.enqueue(encoder.encode(chunk))
+        } catch (err) {
+          console.error("[ayyayo] generate mid-stream error:", (err as Error).message)
+        }
+        controller.close()
+      },
     })
-  } catch {
-    // For a refine, keep the current screen; for a fresh make, use the template.
-    const html = isRefine ? (baseHtml as string) : tmpl.html
-    return Response.json({
-      html,
-      title: tmpl.title,
-      persona: tmpl.persona,
-      source: "fallback",
-    })
+
+    return new Response(stream, { headers: headers("cerebras") })
+  } catch (err) {
+    console.error("[ayyayo] generate error:", (err as Error).message)
+    return fallback()
   }
 }

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 
-export const runtime = 'edge'
+// Node runtime, NOT edge — same Cloudflare-blocks-Workers issue as Cerebras.
+export const runtime = 'nodejs'
 
 const CANNED = [
   'Hee hee! That tickles my brain!',
@@ -24,11 +25,16 @@ export async function POST(req: Request) {
   let text = ''
   let persona = 'a cheerful buddy'
   let slug: string | undefined
+  // `long` lets an in-app AI ask for a substantive answer (a critical-thinking
+  // prompt, a story, an explanation). Default stays small + snappy.
+  let long = false
   try {
     const body = await req.json()
-    text = String(body.text ?? '').slice(0, 300)
-    persona = String(body.persona ?? persona).slice(0, 200)
+    text = String(body.text ?? '').slice(0, long ? 4000 : 1200)
+    persona = String(body.persona ?? persona).slice(0, 240)
     slug = body.slug ? String(body.slug) : undefined
+    long = body.long === true || body.mode === 'think'
+    text = String(body.text ?? '').slice(0, long ? 4000 : 600)
   } catch {}
 
   // Per-artifact spend cap: if this shared buddy is over budget, serve canned.
@@ -49,22 +55,35 @@ export async function POST(req: Request) {
   const key = process.env.FIREWORKS_API_KEY
   if (!key) return NextResponse.json({ text: canned(text), source: 'fallback' })
 
+  // System prompt + budget scale with the mode. Short = a toy that quips.
+  // Long = a thinking partner the kid built (e.g. a critical-thinking app):
+  // still kid-safe, but allowed to actually be substantive and well-structured.
+  const system = long
+    ? `You are ${persona}, an in-app helper a kid built on ayyayo. Give a clear, genuinely useful, kid-friendly answer (ages 8-11). When it helps, use short bullet points or numbered steps. Encourage the kid to think for themselves — ask a sharp follow-up question, point out what to notice, never just hand over the answer. Stay kind, safe, and concrete. Plain text only, no markdown headers.`
+    : `You are ${persona}. You are a toy a kid built and bosses around. Reply in ONE short, playful, kid-safe sentence. Never give emotional support or pretend to be a real lasting friend. Keep it light and fun.`
+
   try {
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 6000)
+    const timer = setTimeout(() => ctrl.abort(), long ? 18000 : 6000)
     const res = await fetch('https://api.fireworks.ai/inference/v1/chat/completions', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${key}`,
+        // Same Cloudflare bot-wall issue as Cerebras: UA-less datacenter
+        // fetches get 403'd. Explicit UA passes.
+        'user-agent': 'curl/8.9.1',
+      },
       signal: ctrl.signal,
       body: JSON.stringify({
-        model: 'accounts/fireworks/models/llama-v3p1-8b-instruct',
-        max_tokens: 80,
-        temperature: 0.9,
+        // gpt-oss-120b: fastest open model on Fireworks serverless (MoE).
+        // llama-v3p1-8b was retired (404s).
+        model: 'accounts/fireworks/models/gpt-oss-120b',
+        max_tokens: long ? 1800 : 250,
+        reasoning_effort: long ? 'medium' : 'low',
+        temperature: long ? 0.7 : 0.9,
         messages: [
-          {
-            role: 'system',
-            content: `You are ${persona}. You are a toy a kid built and bosses around. Reply in ONE short, playful, kid-safe sentence. Never give emotional support or pretend to be a real lasting friend. Keep it light and fun.`,
-          },
+          { role: 'system', content: system },
           { role: 'user', content: text },
         ],
       }),
@@ -87,7 +106,7 @@ export async function POST(req: Request) {
         if (data) {
           await sb
             .from('artifacts')
-            .update({ ai_spend_cents: data.ai_spend_cents + 1 })
+            .update({ ai_spend_cents: data.ai_spend_cents + (long ? 4 : 1) })
             .eq('slug', slug)
         }
       } catch {}

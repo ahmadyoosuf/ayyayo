@@ -1,4 +1,4 @@
-export type Kind = 'game' | 'story' | 'quiz' | 'buddy'
+export type Kind = 'game' | 'story' | 'quiz' | 'buddy' | 'deck'
 
 export interface Artifact {
   id: string

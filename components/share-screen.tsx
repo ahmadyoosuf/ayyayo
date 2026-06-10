@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import QRCode from "qrcode"
-import { ArrowLeft, Check, Copy, PartyPopper } from "lucide-react"
+import { IconBack, IconCheck, IconCopy, IconParty } from "@/components/icons"
 import { ArtifactFrame } from "@/components/artifact-frame"
 import { Mascot } from "@/components/mascot"
 import type { Kind } from "@/lib/types"
@@ -91,7 +91,7 @@ export function ShareScreen() {
           style={{ padding: "10px 16px", fontSize: 16 }}
           onClick={() => router.push("/build")}
         >
-          <ArrowLeft size={20} strokeWidth={2.6} />
+          <IconBack size={20} />
           back
         </button>
       </header>
@@ -150,7 +150,7 @@ export function ShareScreen() {
                 gap: 8,
               }}
             >
-              <PartyPopper size={28} strokeWidth={2.6} /> it&apos;s live!
+              <IconParty size={30} /> it&apos;s live!
             </h1>
             <p style={{ fontWeight: 700, color: "var(--ink-soft)", textAlign: "center", margin: 0 }}>
               anyone with the link can play it. it runs for real.
@@ -188,7 +188,7 @@ export function ShareScreen() {
               </code>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
                 <button className="btn-plush mint" onClick={copy}>
-                  {copied ? <Check size={20} strokeWidth={2.6} /> : <Copy size={20} strokeWidth={2.6} />}
+                  {copied ? <IconCheck size={20} /> : <IconCopy size={20} />}
                   {copied ? "copied!" : "copy link"}
                 </button>
                 <Link href={`/a/${slug}`} className="btn-plush sky" style={{ textDecoration: "none" }}>

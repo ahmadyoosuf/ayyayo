@@ -1,5 +1,7 @@
 'use client'
 
+import { IconSpark } from '@/components/icons'
+
 // Competence mirror, not a score to farm. Shows how many sharp calls the kid
 // has made (choice + why + visible improvement). Levels reflect discernment.
 const LEVELS = ['new eyes', 'noticing', 'sharp', 'eagle eye', 'taste boss']
@@ -28,8 +30,8 @@ export function TasteMeter({
         background: 'var(--paper)',
       }}
     >
-      <span aria-hidden style={{ fontSize: 22 }} className={pop ? 'popin' : 'breathe'}>
-        {'\u2728'}
+      <span aria-hidden style={{ display: 'inline-flex' }} className={pop ? 'popin' : 'breathe'}>
+        <IconSpark size={24} />
       </span>
       <div style={{ minWidth: compact ? 96 : 120 }}>
         <div style={{ fontWeight: 900, fontSize: 14, lineHeight: 1.1 }}>

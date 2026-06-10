@@ -37,6 +37,7 @@ export function ArtifactPlayer({
           body: JSON.stringify({
             text: d.text,
             persona: d.persona || persona,
+            long: d.long === true,
             slug,
             sessionId: getSessionId(),
           }),
@@ -58,7 +59,7 @@ export function ArtifactPlayer({
     <iframe
       ref={ref}
       title="A creation made on ayyayo"
-      sandbox="allow-scripts allow-pointer-lock allow-popups"
+      sandbox="allow-scripts allow-pointer-lock allow-popups allow-downloads"
       style={{ border: 0, width: "100%", height: "100dvh", background: "var(--cream)" }}
     />
   )

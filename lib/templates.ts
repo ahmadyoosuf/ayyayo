@@ -96,11 +96,37 @@ const BUDDY = doc(
    document.getElementById('send').onclick=send;inp.addEventListener('keydown',e=>{if(e.key==='Enter')send()})`,
 )
 
+// ── DECK: a tiny swipeable slide deck. Fallback shell; the model fills it
+// with real, on-topic slides. Always ends on "created with ayyayo". ──
+const DECK = doc(
+  'My Slides',
+  `<div class="card" style="display:flex;flex-direction:column;height:78vh;max-height:560px;justify-content:space-between">
+    <div id="count" style="align-self:flex-end;font-weight:800;color:#8e7261"></div>
+    <div id="slide" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;overflow:auto"></div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button id="back">back</button><button id="next">next</button>
+    </div>
+  </div>`,
+  `.title{font-size:30px;font-weight:900}.bul{font-weight:700;font-size:18px;margin:4px 0}
+   .ayyayo{font-size:34px;font-weight:900;color:#ff8e5c;transform:rotate(-3deg)}`,
+  `const S=[{t:'My Big Idea',b:['tap next to start']},{t:'What it does',b:['it is fun','it is fast','you have the taste']},{ayyayo:1}];
+   let i=0;const el=document.getElementById('slide'),c=document.getElementById('count');
+   function show(){const s=S[i];el.innerHTML='';c.textContent=(i+1)+'/'+S.length;
+   if(s.ayyayo){const d=document.createElement('div');d.className='ayyayo';d.textContent='created with ayyayo \\u2728';el.appendChild(d);return}
+   const h=document.createElement('div');h.className='title';h.textContent=s.t;el.appendChild(h);
+   (s.b||[]).forEach(x=>{const p=document.createElement('div');p.className='bul';p.textContent='\\u2022 '+x;el.appendChild(p)})}
+   document.getElementById('next').onclick=()=>{if(i<S.length-1){i++;show()}};
+   document.getElementById('back').onclick=()=>{if(i>0){i--;show()}};
+   addEventListener('keydown',e=>{if(e.key==='ArrowRight')document.getElementById('next').click();if(e.key==='ArrowLeft')document.getElementById('back').click()});
+   show()`,
+)
+
 export const TEMPLATES: Record<Kind, { title: string; html: string; persona?: string }> = {
   game: { title: 'Dragon Tap', html: GAME },
   story: { title: 'The Brave Taco', html: STORY },
   quiz: { title: 'Animal Quiz', html: QUIZ },
   buddy: { title: 'Sprout the Buddy', html: BUDDY, persona: 'Sprout, a cheerful sprout who loves jokes' },
+  deck: { title: 'My Slides', html: DECK },
 }
 
 export function templateFor(kind: Kind) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { Mic } from 'lucide-react'
+import { IconMic } from '@/components/icons'
 
 // Big plush mic. Pulses while listening. Always paired with a tap fallback
 // elsewhere in the UI so voice is never the only path.
@@ -46,7 +46,7 @@ export function MicButton({
           }}
         />
       )}
-      <Mic size={size * 0.42} strokeWidth={2.6} color="var(--ink)" />
+      <IconMic size={size * 0.52} />
     </button>
   )
 }

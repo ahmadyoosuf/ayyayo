@@ -14,3 +14,10 @@ node_modules
 .next/
 .DS_Store
 .vercel
+
+# Secrets (pulled via `vercel env pull`)
+.env
+
+# Context dumps / scratch
+repomix-output*
+*.tsbuildinfo

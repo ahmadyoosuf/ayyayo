@@ -1,373 +1,361 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Check, X } from "lucide-react"
-import useSWR from "swr"
+import { ArtifactFrame } from "@/components/artifact-frame"
 import { Mascot } from "@/components/mascot"
 import { TasteMeter } from "@/components/taste-meter"
 import { MicButton } from "@/components/mic-button"
+import { IconBack, IconCheck, IconSpark, IconHush, IconSound } from "@/components/icons"
 import { useTaste } from "@/hooks/use-taste"
 import { useGeminiLive } from "@/hooks/use-gemini-live"
 import { JUDGE_TOOLS, JUDGE_SYSTEM_INSTRUCTION } from "@/lib/live-tools"
-import type { JudgePair } from "@/lib/types"
+import { TELLS, tellById } from "@/lib/slop"
+import { extractHtml, looksLikeHtml } from "@/lib/html"
 
-const fetcher = (u: string) => fetch(u).then((r) => r.json())
+// ── De-Slop: the AI makes real slop live, the kid catches it, names it, and
+// bosses the bot to repair it. Judgment with a visible before/after. ──
 
-// Reasons a kid can tap instead of speaking (tap fallback for voice).
-const REASONS = [
-  "too much words",
-  "too messy",
-  "boring",
-  "clean and clear",
-  "more fun",
-  "easy to read",
+type Stage = "loading" | "spot" | "fix" | "fixing" | "done"
+
+const FIX_CHIPS = [
+  "make it real",
+  "say less, mean more",
+  "give it a voice",
+  "only true things",
+  "make it yours",
 ]
-
-type Stage = "pick" | "why" | "result"
 
 export function JudgeScreen() {
   const router = useRouter()
   const { count, reward } = useTaste()
   const live = useGeminiLive()
-  const { data } = useSWR<{ pairs: JudgePair[] }>("/api/pairs", fetcher, {
-    revalidateOnFocus: false,
-  })
 
-  const pairs = data?.pairs ?? []
-  const [idx, setIdx] = useState(0)
-  const [stage, setStage] = useState<Stage>("pick")
-  const [picked, setPicked] = useState<"good" | "slop" | null>(null)
-  const [correct, setCorrect] = useState(false)
+  const [stage, setStage] = useState<Stage>("loading")
+  const [slopHtml, setSlopHtml] = useState("")
+  const [fixedHtml, setFixedHtml] = useState("")
+  const [showBefore, setShowBefore] = useState(false)
+  const [tellId, setTellId] = useState<string>("")
+  const [topic, setTopic] = useState("")
+  const [wrongGuesses, setWrongGuesses] = useState<string[]>([])
+  const [caught, setCaught] = useState(false)
 
-  const pair = pairs.length ? pairs[idx % pairs.length] : null
+  // Refs so voice tool handlers always read fresh state.
+  const stageRef = useRef(stage)
+  stageRef.current = stage
+  const tellRef = useRef(tellId)
+  tellRef.current = tellId
+  const slopRef = useRef(slopHtml)
+  slopRef.current = slopHtml
 
-  // Randomize which side shows the good one, fresh per pair.
-  const goodLeft = useMemo(() => Math.random() > 0.5, [pair?.id])
+  // Leaving the screen kills the live session — no orphaned voices.
+  const stopRef = useRef(live.stop)
+  stopRef.current = live.stop
+  useEffect(() => {
+    return () => stopRef.current()
+  }, [])
 
-  // Refs so the live tool handler always reads fresh values.
-  const goodLeftRef = useRef(goodLeft)
-  goodLeftRef.current = goodLeft
-  const pairRef = useRef<JudgePair | null>(pair)
-  pairRef.current = pair
+  // ── round lifecycle ──
+  const loadRound = useCallback(async () => {
+    setStage("loading")
+    setSlopHtml("")
+    setFixedHtml("")
+    setShowBefore(false)
+    setWrongGuesses([])
+    setCaught(false)
+    try {
+      const res = await fetch("/api/slop", { method: "POST" })
+      const tell = res.headers.get("x-ayyayo-tell") ?? "says-nothing"
+      const topicText = decodeURIComponent(res.headers.get("x-ayyayo-topic") ?? "")
+      setTellId(tell)
+      tellRef.current = tell
+      setTopic(topicText)
 
-  const choose = useCallback(
-    (side: "left" | "right") => {
-      const p = pairRef.current
-      if (!p) return
-      const isGood = (side === "left") === goodLeftRef.current
-      setPicked(isGood ? "good" : "slop")
-      setCorrect(isGood)
-      setStage("why")
-      return isGood
+      let acc = ""
+      let lastPaint = 0
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        acc += decoder.decode(value, { stream: true })
+        const now = Date.now()
+        if (now - lastPaint > 500) {
+          const partial = extractHtml(acc)
+          if (looksLikeHtml(partial) && partial.length > 400) {
+            lastPaint = now
+            setSlopHtml(partial)
+            slopRef.current = partial
+          }
+        }
+      }
+      const final = extractHtml(acc)
+      if (looksLikeHtml(final)) {
+        setSlopHtml(final)
+        slopRef.current = final
+      }
+      setStage("spot")
+      live.tellModel(
+        "A fresh AI-made page just appeared on screen. Ask the child: does it feel right, or is something off? Do not guess the flaw yourself.",
+      )
+    } catch {
+      setStage("spot") // canned fallback already streamed or nothing — UI still works via chips
+    }
+  }, [live])
+
+  useEffect(() => {
+    void loadRound()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
+
+  // ── the catch ──
+  const guess = useCallback(
+    (id: string): boolean => {
+      if (stageRef.current !== "spot") return false
+      const correct = id === tellRef.current
+      if (correct) {
+        setCaught(true)
+        setStage("fix")
+      } else {
+        setWrongGuesses((w) => (w.includes(id) ? w : [...w, id]))
+      }
+      return correct
     },
     [],
   )
 
-  const explain = useCallback(
-    (reason: string) => {
-      if (!pairRef.current) return
-      // The reward requires choice + a stated why. Bare picks don't count.
-      reward("judge", reason)
-      setStage("result")
+  // ── the repair ──
+  const fix = useCallback(
+    async (instruction: string) => {
+      const tell = tellById(tellRef.current)
+      if (!tell || !slopRef.current || stageRef.current === "fixing") return { ok: false }
+      setStage("fixing")
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            kind: "story",
+            instruction: `This page is AI slop: ${tell.grownUp}. The kid's order: "${instruction}". Repair it: ${tell.fix} Keep the same topic and layout so the before/after is obvious.`,
+            baseHtml: slopRef.current,
+          }),
+        })
+        const source = res.headers.get("x-ayyayo-source") ?? "fallback"
+        let acc = ""
+        let lastPaint = 0
+        const reader = res.body!.getReader()
+        const decoder = new TextDecoder()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          acc += decoder.decode(value, { stream: true })
+          const now = Date.now()
+          if (now - lastPaint > 500) {
+            const partial = extractHtml(acc)
+            if (looksLikeHtml(partial) && partial.length > 400) {
+              lastPaint = now
+              setFixedHtml(partial)
+            }
+          }
+        }
+        const final = extractHtml(acc)
+        const changed = looksLikeHtml(final) && final !== slopRef.current
+        if (changed) setFixedHtml(final)
+        setStage("done")
+        if (changed && source === "cerebras") {
+          // The load-bearing reward: catch + why + visible repair.
+          reward("judge", `caught ${tellRef.current} → ${instruction}`)
+          live.tellModel(
+            "The repaired page is on screen — visibly better because of the child's call. Celebrate their sharp eye in one sentence, then ask if they want another round.",
+          )
+        } else {
+          live.tellModel(
+            "The repair did not go through — the page is unchanged. Tell the child honestly and suggest trying the fix again.",
+          )
+        }
+        return { ok: changed }
+      } catch {
+        setStage("fix")
+        return { ok: false }
+      }
     },
-    [reward],
+    [live, reward],
   )
 
   const next = useCallback(() => {
-    setIdx((i) => i + 1)
-    setPicked(null)
-    setStage("pick")
-  }, [])
+    void loadRound()
+  }, [loadRound])
 
-  // Tell Sprout (the live model) about the pair on screen so it can react by voice.
-  function describePair(p: JudgePair, gl: boolean) {
-    return (
-      `A new pair is on screen for topic "${p.topic}". ` +
-      `Option ${gl ? "A" : "B"} is the good one (it is ${p.good_label}). ` +
-      `Option ${gl ? "B" : "A"} has a flaw (it is ${p.slop_flaw}). ` +
-      `Ask the child which one is better and why. When they answer, call pick_better.`
-    )
-  }
-
+  // ── voice ──
   const toggleLive = useCallback(() => {
     if (live.status === "live" || live.status === "connecting") {
       live.stop()
       return
     }
-    const p = pairRef.current
     live.start({
       systemInstruction: JUDGE_SYSTEM_INSTRUCTION,
       tools: JUDGE_TOOLS,
-      greeting: p ? describePair(p, goodLeftRef.current) : "Greet the child and ask them to pick the better one.",
+      greeting:
+        "The child opened the De-Slop gym. A page made by an AI is on screen with one hidden flaw. Say a one-sentence hello and ask if the page feels right or if something is off.",
       onTool: async (name, args) => {
-        if (name === "pick_better") {
-          const choice = String(args.choice || "A").toUpperCase()
-          const side = choice === "A" ? "left" : "right"
-          const isGood = choose(side)
-          const reason = args.reason ? String(args.reason) : ""
-          if (reason) explain(reason)
-          const p2 = pairRef.current
-          return {
-            correct: isGood,
-            betterIs: p2?.good_label,
-            flawWas: p2?.slop_flaw,
+        if (name === "catch_slop") {
+          const id = String(args.tell || "")
+          const correct = guess(id)
+          const actual = tellById(tellRef.current)
+          return correct
+            ? { caught: true, flawWas: actual?.grownUp, note: "they got it — ask how the bot should fix it" }
+            : { caught: false, note: "not quite — encourage them to look again, do not reveal the answer" }
+        }
+        if (name === "fix_slop") {
+          if (stageRef.current !== "fix") {
+            return { ok: false, note: "they have to catch the flaw first" }
           }
+          fix(String(args.instruction || "fix it"))
+          return { started: true, note: "the repair is building — the app will confirm when visible" }
         }
         if (name === "next_round") {
           next()
-          const np = pairs.length ? pairs[(idx + 1) % pairs.length] : null
-          if (np) {
-            // brief delay so state settles, then brief the model on the new pair
-            setTimeout(() => live.tellModel(describePair(np, Math.random() > 0.5)), 400)
-          }
-          return { ok: true }
+          return { ok: true, note: "a fresh page is being made" }
         }
         return { ok: true }
       },
     })
-  }, [live, choose, explain, next, idx, pairs])
+  }, [live, guess, fix, next])
 
-  if (!pair) {
-    return (
-      <main
-        className="paper"
-        style={{
-          minHeight: "100dvh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 14,
-          padding: 24,
-        }}
-      >
-        <Mascot size={84} mood="think" />
-        <p style={{ fontWeight: 800 }}>loading the gym...</p>
-        <button className="btn-plush ghost" onClick={() => router.push("/")}>
-          home
-        </button>
-      </main>
-    )
-  }
-
-  const leftHtml = goodLeft ? pair.good_html : pair.slop_html
-  const rightHtml = goodLeft ? pair.slop_html : pair.good_html
+  const tell = tellById(tellId)
 
   return (
-    <main className="paper" style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "14px 16px",
-          gap: 12,
-        }}
-      >
-        <button
-          className="btn-plush ghost"
-          style={{ padding: "10px 16px", fontSize: 16 }}
-          onClick={() => router.push("/")}
-        >
-          <ArrowLeft size={20} strokeWidth={2.6} />
-          home
-        </button>
-        <TasteMeter count={count} compact />
-      </header>
+    <main className="paper build-shell">
+      <section className="build-stage">
+        <header className="build-top">
+          <button className="btn-plush ghost btn-slim" onClick={() => router.push("/")} aria-label="go home">
+            <IconBack size={20} />
+            <span className="hide-sm">home</span>
+          </button>
+          <TasteMeter count={count} compact />
+        </header>
 
-      <section
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 14,
-          padding: "0 16px 22px",
-          width: "100%",
-          maxWidth: 720,
-          margin: "0 auto",
-        }}
-      >
-        <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0, textAlign: "center" }}>
-          {stage === "why" ? "why is it better?" : "which one is better?"}
-        </h1>
-        <p style={{ fontWeight: 700, color: "var(--ink-soft)", margin: 0 }}>
-          topic: {pair.topic}
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-            width: "100%",
-          }}
-        >
-          <JudgeCard
-            html={leftHtml}
-            label="A"
-            disabled={stage !== "pick"}
-            highlight={stage !== "pick" ? (goodLeft ? "good" : "slop") : undefined}
-            onClick={() => choose("left")}
-          />
-          <JudgeCard
-            html={rightHtml}
-            label="B"
-            disabled={stage !== "pick"}
-            highlight={stage !== "pick" ? (goodLeft ? "slop" : "good") : undefined}
-            onClick={() => choose("right")}
-          />
-        </div>
-
-        {stage === "why" && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 12,
-              width: "100%",
-            }}
-          >
-            <MicButton
-              listening={live.status === "live"}
-              onClick={toggleLive}
-              size={64}
-              label="say why"
-            />
-            <span style={{ fontWeight: 800, color: "var(--ink-soft)", fontSize: 13 }}>
-              {live.status === "live"
-                ? live.speaking
-                  ? "Sprout is talking..."
-                  : "say why it's better"
-                : "tap to tell Sprout why"}
-            </span>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-                justifyContent: "center",
-              }}
-            >
-              {REASONS.map((r) => (
-                <button key={r} className="chip sky" onClick={() => explain(r)}>
-                  {r}
+        <div className="build-canvas">
+          <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
+              <span style={{ fontWeight: 900, fontSize: 15 }}>
+                {stage === "loading"
+                  ? "the bot is making something..."
+                  : stage === "spot"
+                    ? "is this good... or is it slop?"
+                    : stage === "fix"
+                      ? "you caught it! now boss the fix"
+                      : stage === "fixing"
+                        ? "repairing under your orders..."
+                        : "look what YOUR call did"}
+              </span>
+              {stage === "done" ? (
+                <button className="chip butter" onClick={() => setShowBefore((b) => !b)}>
+                  {showBefore ? "show after" : "show before"}
                 </button>
-              ))}
+              ) : null}
+            </div>
+            <div style={{ flex: 1, minHeight: 300, display: "flex" }}>
+              <ArtifactFrame
+                html={stage === "done" && !showBefore ? fixedHtml : slopHtml}
+                building={stage === "loading" || stage === "fixing"}
+                title={topic || "judge this"}
+              />
             </div>
           </div>
-        )}
+        </div>
+      </section>
 
-        {stage === "result" && (
-          <div
-            className="plush-lg popin"
-            style={{
-              background: correct ? "var(--mint)" : "white",
-              padding: "20px 22px",
-              width: "100%",
-              maxWidth: 460,
-              textAlign: "center",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontWeight: 900,
-                fontSize: 22,
-              }}
-            >
-              {correct ? <Check size={26} strokeWidth={3} /> : <X size={26} strokeWidth={3} />}
-              {correct ? "sharp eye!" : "almost!"}
+      <aside className="build-dock">
+        <div className="dock-sprout hide-mobile">
+          <Mascot size={84} mood={stage === "done" ? "proud" : stage === "fix" ? "wow" : "think"} />
+        </div>
+
+        {live.captions ? <p className="dock-caption">{live.captions}</p> : null}
+
+        <div className="dock-mic">
+          <div className="dock-mic-row">
+            <MicButton listening={live.status === "live"} onClick={toggleLive} size={64} label="talk to Sprout" />
+            {live.status === "live" ? (
+              <button
+                className="dock-hush"
+                onClick={() => live.setHushed(!live.muted)}
+                aria-label={live.muted ? "let Sprout talk" : "hush Sprout"}
+              >
+                {live.muted ? <IconSound size={24} /> : <IconHush size={24} />}
+              </button>
+            ) : null}
+          </div>
+          <span className="dock-hint">
+            {live.status === "live"
+              ? live.muted
+                ? "Sprout is hushed — still listening"
+                : stage === "spot"
+                  ? "say what feels off"
+                  : stage === "fix"
+                    ? "say how to fix it"
+                    : "talk to Sprout"
+              : "tap to talk with Sprout"}
+          </span>
+        </div>
+
+        {stage === "spot" ? (
+          <div className="dock-chips" style={{ flexWrap: "wrap", justifyContent: "center", overflow: "visible" }}>
+            {TELLS.map((t) => {
+              const wrong = wrongGuesses.includes(t.id)
+              return (
+                <button
+                  key={t.id}
+                  className={`chip ${wrong ? "" : "rose"}`}
+                  style={wrong ? { opacity: 0.4, textDecoration: "line-through" } : undefined}
+                  disabled={wrong}
+                  onClick={() => {
+                    const correct = guess(t.id)
+                    live.tellModel(
+                      correct
+                        ? `The child tapped "${t.label}" — correct! Celebrate in one sentence and ask how the bot should fix it.`
+                        : `The child tapped "${t.label}" — not the planted flaw. Encourage one more look, do not reveal the answer.`,
+                    )
+                  }}
+                >
+                  {t.label}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+
+        {stage === "fix" ? (
+          <div className="dock-chips" style={{ flexWrap: "wrap", justifyContent: "center", overflow: "visible" }}>
+            {FIX_CHIPS.map((c) => (
+              <button key={c} className="chip mint" onClick={() => fix(c)}>
+                {c}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {stage === "done" ? (
+          <div className="dock-actions">
+            <div className="plush popin" style={{ padding: "10px 16px", display: "flex", alignItems: "center", gap: 8, background: "var(--mint)" }}>
+              <IconCheck size={20} />
+              <span style={{ fontWeight: 800, fontSize: 14 }}>
+                you caught “{tell?.label}” and fixed it
+              </span>
+              <IconSpark size={18} />
             </div>
-            <p style={{ fontWeight: 700, margin: 0 }}>
-              the better one is <b>{pair.good_label}</b>. the other one was{" "}
-              <b>{pair.slop_flaw}</b>.
-            </p>
             <button className="btn-plush primary" onClick={next}>
               next one
             </button>
           </div>
-        )}
-      </section>
-    </main>
-  )
-}
+        ) : null}
 
-function JudgeCard({
-  html,
-  label,
-  disabled,
-  highlight,
-  onClick,
-}: {
-  html: string
-  label: string
-  disabled: boolean
-  highlight?: "good" | "slop"
-  onClick: () => void
-}) {
-  const border =
-    highlight === "good"
-      ? "var(--mint-deep)"
-      : highlight === "slop"
-        ? "var(--rose-deep)"
-        : "var(--line)"
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={disabled ? "" : "tap"}
-      style={{
-        position: "relative",
-        padding: 0,
-        border: `4px solid ${border}`,
-        borderRadius: "var(--r-lg)",
-        boxShadow: "var(--plush)",
-        overflow: "hidden",
-        background: "white",
-        cursor: disabled ? "default" : "pointer",
-      }}
-      aria-label={`option ${label}`}
-    >
-      <iframe
-        title={`option ${label}`}
-        srcDoc={html}
-        sandbox=""
-        scrolling="no"
-        style={{
-          border: 0,
-          width: "100%",
-          height: 240,
-          pointerEvents: "none",
-          background: "var(--cream)",
-        }}
-      />
-      <span
-        style={{
-          position: "absolute",
-          top: 8,
-          left: 8,
-          fontWeight: 900,
-          fontSize: 16,
-          background: "white",
-          border: "3px solid var(--line)",
-          borderRadius: 999,
-          width: 34,
-          height: 34,
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        {label}
-      </span>
-    </button>
+        {caught && stage !== "done" && stage !== "fixing" ? (
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: "var(--ink-soft)", textAlign: "center" }}>
+            it was: <b>{tell?.grownUp}</b>
+          </p>
+        ) : null}
+      </aside>
+    </main>
   )
 }
