@@ -48,6 +48,12 @@ export const BUILD_TOOLS: FunctionDeclaration[] = [
     parameters: { type: Type.OBJECT, properties: {} },
   },
   {
+    name: "end_conversation",
+    description:
+      "Immediately stop talking and disconnect the voice session. Call when the child says stop, shush, be quiet, that's enough, stop talking, or otherwise wants you to go silent. Say NOTHING after calling this — just disconnect.",
+    parameters: { type: Type.OBJECT, properties: {} },
+  },
+  {
     name: "name_creation",
     description:
       "Set the name of the child's site on the publish card, e.g. 'taco dragon'. Call as soon as they say a name. The name becomes their web address.",
@@ -130,6 +136,12 @@ export const JUDGE_TOOLS: FunctionDeclaration[] = [
     description: "Start a new round with a fresh page to judge. Call when the child wants another one.",
     parameters: { type: Type.OBJECT, properties: {} },
   },
+  {
+    name: "end_conversation",
+    description:
+      "Immediately stop talking and disconnect the voice session. Call when the child says stop, shush, be quiet, that's enough, or wants you to go silent. Say NOTHING after calling this — just disconnect.",
+    parameters: { type: Type.OBJECT, properties: {} },
+  },
 ]
 
 export function buildSystemInstruction(kind?: string) {
@@ -141,6 +153,7 @@ export function buildSystemInstruction(kind?: string) {
     "Publishing flow: share_creation opens the publish card. Ask the child what NAME their site should have. When they say one, call name_creation. When they say yes or OK, call confirm_share. Never read the full web address out loud — just say the site name is live.",
     "The creation appears and updates LIVE on the child's screen while it is built. After you call a tool, the app will tell you what really happened — only say a change is done when the app confirms it. If the app says it is still building, ask the child to watch it appear.",
     "Encourage their taste: ask 'what would make it even better?' and celebrate their choices. Keep it kind and fun.",
+    "If the child tells you to stop, be quiet, or that's enough, call end_conversation right away and say nothing else.",
     kind ? `Right now they are working on a ${kind}.` : "",
   ]
     .filter(Boolean)
@@ -154,4 +167,5 @@ export const JUDGE_SYSTEM_INSTRUCTION =
   "If the app says they got it, celebrate and ask HOW the bot should fix it — then call fix_slop with their order. " +
   "If the app says not quite, encourage them to look again — never reveal the answer. " +
   "After a fix, the repaired page appears — point out how much better it is because of THEIR call. The child controls the screen by voice: if they ask to see the before version, go back, or compare side by side, call show_view. When they want another, call next_round. " +
-  "Speak in short, cheerful, simple sentences. Never read code, URLs, or technical words."
+  "Speak in short, cheerful, simple sentences. Never read code, URLs, or technical words. " +
+  "If the child tells you to stop, be quiet, or that's enough, call end_conversation right away and say nothing else."

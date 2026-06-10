@@ -10,7 +10,7 @@ import { TasteMeter } from "@/components/taste-meter"
 import {
   IconBack,
   IconShare,
-  IconSpark,
+  IconEye,
   IconCheck,
   IconCopy,
   IconParty,
@@ -344,8 +344,14 @@ export function BuildScreen() {
         if (name === "open_creation") {
           const opened = openInTab()
           return opened
-            ? { ok: true, note: "opened in a new tab — Sprout is hushed while they play" }
+            ? { ok: true, note: "opened in a new tab. Sprout is hushed while they play" }
             : { ok: false, error: "nothing to open yet" }
+        }
+        if (name === "end_conversation") {
+          // Cut audio mid-sentence, then tear the session down — no goodbye.
+          live.setHushed(true)
+          setTimeout(() => live.stop(), 80)
+          return { ok: true }
         }
         return { ok: true }
       },
@@ -421,7 +427,7 @@ export function BuildScreen() {
             ? "listening... say what to change"
             : "listening... say what to make"
         : live.status === "error"
-          ? "voice napped — tap a bubble instead"
+          ? "voice napped. tap a bubble instead"
           : live.status === "unsupported"
             ? "use the bubbles below"
             : "tap to talk with Sprout"
@@ -447,7 +453,7 @@ export function BuildScreen() {
                 <Mascot size={110} mood="happy" />
               </div>
               <h1>what should we make?</h1>
-              <p>tap the mic and just say it — i&apos;ll build it while you watch</p>
+              <p>tap the mic and just say it. i&apos;ll build it while you watch.</p>
               <div className="starter-row">
                 {STARTERS.map((s) => (
                   <button
@@ -497,7 +503,7 @@ export function BuildScreen() {
               </button>
             ) : null}
           </div>
-          <span className="dock-hint">{live.muted && live.status === "live" ? "Sprout is hushed — still listening" : micHint}</span>
+          <span className="dock-hint">{live.muted && live.status === "live" ? "Sprout is hushed. still listening" : micHint}</span>
         </div>
 
         {started ? (
@@ -537,7 +543,7 @@ export function BuildScreen() {
             </button>
             {changes > 0 ? (
               <span className="dock-changes">
-                <IconSpark size={18} /> {changes} change{changes > 1 ? "s" : ""} made it better
+                <IconEye size={18} /> {changes} change{changes > 1 ? "s" : ""} made it better
               </span>
             ) : null}
           </div>

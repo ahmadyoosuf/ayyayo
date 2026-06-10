@@ -6,7 +6,7 @@ import { ArtifactFrame } from "@/components/artifact-frame"
 import { Mascot } from "@/components/mascot"
 import { TasteMeter } from "@/components/taste-meter"
 import { MicButton } from "@/components/mic-button"
-import { IconBack, IconCheck, IconSpark, IconHush, IconSound } from "@/components/icons"
+import { IconBack, IconCheck, IconEye, IconHush, IconSound } from "@/components/icons"
 import { useTaste } from "@/hooks/use-taste"
 import { useGeminiLive } from "@/hooks/use-gemini-live"
 import { JUDGE_TOOLS, JUDGE_SYSTEM_INSTRUCTION } from "@/lib/live-tools"
@@ -228,6 +228,11 @@ export function JudgeScreen() {
           }
           return { ok: false, error: "unknown view" }
         }
+        if (name === "end_conversation") {
+          live.setHushed(true)
+          setTimeout(() => live.stop(), 80)
+          return { ok: true }
+        }
         if (name === "next_round") {
           next()
           return { ok: true, note: "a fresh page is being made" }
@@ -350,7 +355,7 @@ export function JudgeScreen() {
           <span className="dock-hint">
             {live.status === "live"
               ? live.muted
-                ? "Sprout is hushed — still listening"
+                ? "Sprout is hushed. still listening"
                 : stage === "spot"
                   ? "say what feels off"
                   : stage === "fix"
@@ -403,7 +408,7 @@ export function JudgeScreen() {
               <span style={{ fontWeight: 800, fontSize: 14 }}>
                 you caught “{tell?.label}” and fixed it
               </span>
-              <IconSpark size={18} />
+              <IconEye size={18} />
             </div>
             <button className="btn-plush primary" onClick={next}>
               next one

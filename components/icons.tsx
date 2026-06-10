@@ -47,6 +47,18 @@ export function IconShare({ size = 24, className }: IconProps) {
   )
 }
 
+// Taste = a sharp eye. Replaces the overused AI sparkle; ties to the meter's
+// own level names (new eyes → noticing → sharp → eagle eye → taste boss).
+export function IconEye({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+      <path d="M3 16q6.5-8.5 13-8.5T29 16q-6.5 8.5-13 8.5T3 16Z" fill="var(--sky)" {...stroke} />
+      <circle cx="16" cy="16" r="4.6" fill="var(--ink)" stroke="var(--line)" strokeWidth="2.4" />
+      <circle cx="14.3" cy="14.3" r="1.5" fill="#fff" />
+    </svg>
+  )
+}
+
 export function IconSpark({ size = 24, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
