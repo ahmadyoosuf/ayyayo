@@ -1,4 +1,5 @@
 import { buildPrompt, streamCerebras } from "@/lib/cerebras"
+import { injectDeckExporter } from "@/lib/deck-export"
 import { templateFor } from "@/lib/templates"
 import type { Kind } from "@/lib/types"
 
@@ -45,7 +46,8 @@ export async function POST(req: Request) {
     })
 
   const fallback = () => {
-    const html = isRefine ? (baseHtml as string) : tmpl.html
+    let html = isRefine ? (baseHtml as string) : tmpl.html
+    if (kind === "deck") html = injectDeckExporter(html)
     return new Response(html, { headers: headers("fallback") })
   }
 
@@ -63,14 +65,33 @@ export async function POST(req: Request) {
     const first = await gen.next()
     if (first.done) throw new Error("empty_stream")
 
+    // For decks, splice the app-owned PPTX exporter in right after <head> —
+    // buffered until the tag arrives (usually the first chunk), streaming
+    // passthrough after. The model never writes export code.
+    const needsExporter = kind === "deck"
+    let injected = !needsExporter
+    let carry = ""
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        controller.enqueue(encoder.encode(first.value))
+        const push = (chunk: string) => {
+          if (injected) {
+            controller.enqueue(encoder.encode(chunk))
+            return
+          }
+          carry += chunk
+          if (/<head[^>]*>/i.test(carry) || /<html[^>]*>/i.test(carry) && carry.length > 6000) {
+            controller.enqueue(encoder.encode(injectDeckExporter(carry)))
+            injected = true
+            carry = ""
+          }
+        }
+        push(first.value)
         try {
-          for await (const chunk of gen) controller.enqueue(encoder.encode(chunk))
+          for await (const chunk of gen) push(chunk)
         } catch (err) {
           console.error("[ayyayo] generate mid-stream error:", (err as Error).message)
         }
+        if (!injected && carry) controller.enqueue(encoder.encode(injectDeckExporter(carry)))
         controller.close()
       },
     })

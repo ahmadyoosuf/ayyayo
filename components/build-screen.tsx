@@ -437,7 +437,7 @@ export function BuildScreen() {
       {/* ── the stage: the creation is the hero ── */}
       <section className="build-stage">
         <header className="build-top">
-          <button className="btn-plush ghost btn-slim" onClick={() => router.push("/")} aria-label="go home">
+          <button className="btn-plush ghost btn-slim" onClick={() => router.push("/home")} aria-label="go home">
             <IconBack size={20} />
             <span className="hide-sm">home</span>
           </button>

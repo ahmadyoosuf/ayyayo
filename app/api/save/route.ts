@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server"
-import { createServiceClient } from "@/lib/supabase/server"
+import { createServiceClient, getSessionUser } from "@/lib/supabase/server"
 import { makeSlug, sanitizeSlug } from "@/lib/slug"
 import { archiveCreation } from "@/lib/s3"
 import type { Kind } from "@/lib/types"
@@ -28,6 +28,7 @@ export async function POST(req: Request) {
     }
 
     const sb = createServiceClient()
+    const user = await getSessionUser()
 
     const wanted = sanitizeSlug(body.slug ?? "")
     let slug = wanted || makeSlug()
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
         prompt: (body.prompt ?? "").slice(0, 500),
         html: body.html,
         buddy_persona: body.persona ?? null,
+        owner_email: user?.email ?? null,
       })
       if (!error) {
         // Durable S3 archive. after() runs it once the response is sent, so

@@ -510,6 +510,20 @@ body {
   width: 100%;
   max-width: 340px;
 }
+.login-field {
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 16px;
+  padding: 13px 18px;
+  border: 3px solid var(--line);
+  border-radius: var(--r-pill);
+  outline: none;
+  background: white;
+  color: var(--ink);
+}
+.login-field:focus {
+  box-shadow: 0 0 0 4px var(--butter);
+}
 .dock-coach {
   border: 3px solid var(--line);
   border-radius: var(--r-pill);
