@@ -63,6 +63,15 @@
   box-sizing: border-box;
 }
 
+/* Headings wear the display face; body stays Nunito. The .display class
+   covers hero text that isn't an h1/h2 (e.g. the "ayyayo" wordmark). */
+h1,
+h2,
+.display {
+  font-family: var(--font-display), var(--font-nunito), system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
 html,
 body {
   height: 100%;
