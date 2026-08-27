@@ -13,7 +13,7 @@ IN-APP AI (use ONLY when the app needs a smart reply):
 - To get a reply, call: parent.postMessage({type:'buddy_say',id,text,persona,long},'*') and listen for {type:'buddy_reply',id,text}.
 - Set long:false for quick playful one-liners. Set long:true ONLY when the kid asked for a real, thoughtful answer (explaining, brainstorming, critical-thinking). long:true can take a few seconds — show a "thinking..." state and auto-scroll to the newest reply.
 - ALWAYS include a short canned fallback reply after 5s (long:false) / 18s (long:true) if none arrives, so the app never hangs.
-ABOUT AYYAYO (use ONLY when the creation is about ayyayo itself — never inject otherwise): ayyayo is a voice-to-code platform where kids speak and real software appears live as they talk. Code is generated on Cerebras at 1000+ TPS — always write it expanded: "1000+ tokens per second (about 750 words every second — faster than anyone can read)". Never assume the audience knows an acronym; expand it the first time. Kids boss the bot, judge its output, catch and de-slop AI slop, and publish to their own real website at name.ayyayo.app, durably archived on AWS S3. Voice runs on Gemini Live; the kid has the taste, the bot does the labor.
+ABOUT AYYAYO (use ONLY when the creation is about ayyayo itself — never inject otherwise): ayyayo is a voice-to-code platform where kids speak and real software appears live as they talk. Code streams fast from Cerebras inference. Kids refine what the model makes, catch lazy AI writing in the judge gym, and publish to their own URL at name.ayyayo.app. Creations are stored in Supabase.
 Reuse this base style as a starting point inside <style>:
 ${ARTIFACT_BASE_CSS}`
 
@@ -57,10 +57,8 @@ Apply that change and return the FULL updated single-file HTML document. Keep wh
 Return the full single-file HTML document now.`
 }
 
-// Streams raw text chunks from Cerebras GLM-4.7. Throws on any failure so the
-// caller can fall back to a cached template (spec sec 7).
-// reasoning_effort "none": GLM-4.7 is a reasoning model and burns thousands of
-// tokens thinking before the first HTML byte — we need 1000+ TPS of CODE.
+// Streams raw text chunks from Cerebras gpt-oss-120b. Throws on failure so the
+// caller can fall back to a cached template.
 export async function* streamCerebras(prompt: string): AsyncGenerator<string> {
   const key = process.env.CEREBRAS_API_KEY
   if (!key) throw new Error('no_cerebras_key')
@@ -70,16 +68,13 @@ export async function* streamCerebras(prompt: string): AsyncGenerator<string> {
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${key}`,
-      // Cerebras' Cloudflare returns 403 to UA-less fetches from datacenter
-      // IPs (Vercel edge). Any explicit UA passes; verified in production.
       'user-agent': 'curl/8.9.1',
     },
     body: JSON.stringify({
-      model: 'zai-glm-4.7',
+      model: 'gpt-oss-120b',
       stream: true,
       max_tokens: 12000,
       temperature: 0.7,
-      reasoning_effort: 'none',
       messages: [
         { role: 'system', content: SYSTEM },
         { role: 'user', content: prompt },

@@ -1,28 +1,25 @@
 # ayyayo
 
-**boss the bot.** · [ayyayo.ai](https://ayyayo.ai)
+Voice-to-code for kids. They speak, software appears, they refine it, it ships to a real URL.
 
-Voice-to-code for kids 8 to 11. They speak, the bot builds, they judge.
+## Stack
 
-## What a kid does
+- **Supabase** — auth, database, storage
+- **Vercel** — hosting, functions, wildcard DNS (`*.ayyayo.app`)
+- **Azure OpenAI** — speech-to-speech voice (Realtime)
+- **Cerebras** — fast HTML codegen (`gpt-oss-120b`)
+- **Azure Foundry / Fireworks** — in-app buddy replies (`gpt-oss-120b`)
 
-1. **speak it** · "make me a game where a dragon eats tacos"
-2. **watch it build** · the app paints itself on screen while they talk
-3. **make it live** · "publish it" puts it at dragon-tacos.ayyayo.app
-4. **boss the bot** · the de-slop gym: catch the AI's lazy writing, order the fix
-
-## Under the hood
-
-- **AWS** · every creation archived to S3; Kiro in the build pipeline
-- **Vercel** · born in v0; hosting, functions, CLI, wildcard DNS
-- **voice** · a speech-to-speech agent runs the whole app through tool calls
-- **speed** · inference at 1000+ tokens per second, so it renders as you speak
-
-## Run it
+## Run locally
 
 ```bash
 pnpm install
+cp .env.example .env.local   # fill in values
 pnpm dev
 ```
 
-Built at SuperAI NEXT Hackathon 2026, Singapore.
+Create a Supabase Storage bucket named `artifacts` (private). The save route archives published HTML there best-effort.
+
+## Environment variables
+
+See `.env.example`.

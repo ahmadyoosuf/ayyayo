@@ -8,7 +8,7 @@ import { TasteMeter } from "@/components/taste-meter"
 import { MicButton } from "@/components/mic-button"
 import { IconBack, IconCheck, IconEye, IconHush, IconSound } from "@/components/icons"
 import { useTaste } from "@/hooks/use-taste"
-import { useGeminiLive } from "@/hooks/use-gemini-live"
+import { useVoice } from "@/hooks/use-voice"
 import { JUDGE_TOOLS, JUDGE_SYSTEM_INSTRUCTION } from "@/lib/live-tools"
 import { TELLS, tellById } from "@/lib/slop"
 import { extractHtml, looksLikeHtml } from "@/lib/html"
@@ -29,7 +29,7 @@ const FIX_CHIPS = [
 export function JudgeScreen() {
   const router = useRouter()
   const { count, reward } = useTaste()
-  const live = useGeminiLive()
+  const live = useVoice()
 
   const [stage, setStage] = useState<Stage>("loading")
   const [slopHtml, setSlopHtml] = useState("")

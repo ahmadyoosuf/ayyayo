@@ -1,11 +1,10 @@
 import { NextResponse, after } from "next/server"
 import { createServiceClient, getSessionUser } from "@/lib/supabase/server"
 import { makeSlug, sanitizeSlug } from "@/lib/slug"
-import { archiveCreation } from "@/lib/s3"
+import { archiveCreation } from "@/lib/storage"
 import type { Kind } from "@/lib/types"
 
-// Node runtime: the AWS SDK isn't edge-compatible, and (like Cerebras) we
-// want AWS-IP egress.
+// Node runtime for Supabase Storage uploads.
 export const runtime = "nodejs"
 
 // POST /api/save { kind, title, html, persona, prompt, slug? }
@@ -14,6 +13,9 @@ export const runtime = "nodejs"
 // subdomain. Collisions get a numeric suffix, garbage falls back to a
 // friendly random slug.
 export async function POST(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: "sign in first" }, { status: 401 })
+
   try {
     const body = (await req.json()) as {
       kind?: Kind
@@ -28,7 +30,6 @@ export async function POST(req: Request) {
     }
 
     const sb = createServiceClient()
-    const user = await getSessionUser()
 
     const wanted = sanitizeSlug(body.slug ?? "")
     let slug = wanted || makeSlug()
@@ -40,10 +41,10 @@ export async function POST(req: Request) {
         prompt: (body.prompt ?? "").slice(0, 500),
         html: body.html,
         buddy_persona: body.persona ?? null,
-        owner_email: user?.email ?? null,
+        owner_email: user.email,
       })
       if (!error) {
-        // Durable S3 archive. after() runs it once the response is sent, so
+        // Durable Storage archive. after() runs it once the response is sent, so
         // it never blocks the publish AND survives the serverless freeze
         // that drops bare fire-and-forget promises.
         const archiveSlug = slug

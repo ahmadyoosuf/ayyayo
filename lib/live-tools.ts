@@ -1,25 +1,24 @@
-import { Type, type FunctionDeclaration } from "@google/genai"
+import type { VoiceTool } from "@/lib/realtime-tools"
 
-// These are the actions the Gemini Live model can take to drive the app.
-// The model hears the kid's raw voice and decides which tool to call —
-// there is no text bridge. Each loop registers the handlers it cares about.
+// Actions the Realtime voice model can take to drive the app.
+// The model hears raw voice and decides which tool to call.
 
-export const BUILD_TOOLS: FunctionDeclaration[] = [
+export const BUILD_TOOLS: VoiceTool[] = [
   {
     name: "make_creation",
     description:
       "Start a brand new creation of a given kind. Call this as soon as the child says what they want to make.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         kind: {
-          type: Type.STRING,
+          type: "string",
           description:
             "One of: game, story, quiz, buddy, deck. Use 'deck' when the child asks for a presentation, slides, or slideshow.",
           enum: ["game", "story", "quiz", "buddy", "deck"],
         },
         idea: {
-          type: Type.STRING,
+          type: "string",
           description: "A short description of what the child wants, in their words.",
         },
       },
@@ -31,10 +30,10 @@ export const BUILD_TOOLS: FunctionDeclaration[] = [
     description:
       "Change the current creation based on what the child asked for. Call this every time they want it different.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         instruction: {
-          type: Type.STRING,
+          type: "string",
           description: "The concrete change the child wants, e.g. 'make it about space' or 'add a jumping cat'.",
         },
       },
@@ -45,22 +44,22 @@ export const BUILD_TOOLS: FunctionDeclaration[] = [
     name: "share_creation",
     description:
       "Open the publish card so the creation can go live on the internet. Call when the child says they are done, want to share, publish, or put it online. Then ask them what name their site should have.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
   {
     name: "end_conversation",
     description:
       "Immediately stop talking and disconnect the voice session. Call when the child says stop, shush, be quiet, that's enough, stop talking, or otherwise wants you to go silent. Say NOTHING after calling this — just disconnect.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
   {
     name: "name_creation",
     description:
       "Set the name of the child's site on the publish card, e.g. 'taco dragon'. Call as soon as they say a name. The name becomes their web address.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
-        name: { type: Type.STRING, description: "The site name the child said, in their words." },
+        name: { type: "string", description: "The site name the child said, in their words." },
       },
       required: ["name"],
     },
@@ -69,36 +68,36 @@ export const BUILD_TOOLS: FunctionDeclaration[] = [
     name: "confirm_share",
     description:
       "Publish the creation live right now. Call when the child says yes, OK, go, or confirms the name on the publish card.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
   {
     name: "cancel_share",
     description: "Close the publish card without publishing. Call if the child changes their mind or wants to keep making.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
   {
     name: "open_creation",
     description:
       "Open the creation in a new browser tab so the child can play it full screen. Call when they say open it, play it, or try it. Works for the published site or the current work-in-progress.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
 ]
 
-export const JUDGE_TOOLS: FunctionDeclaration[] = [
+export const JUDGE_TOOLS: VoiceTool[] = [
   {
     name: "catch_slop",
     description:
       "Record what the child says is wrong with the page on screen. Call as soon as they name a problem. Map their words to the closest tell.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         tell: {
-          type: Type.STRING,
+          type: "string",
           description:
             "The closest tell: says-nothing (smooth words, zero meaning), no-real-example (vague claims, no specifics), fake-facts (made-up numbers/sources), robot-voice (stiff lifeless committee writing), too-samey (the generic template every AI page has).",
           enum: ["says-nothing", "no-real-example", "fake-facts", "robot-voice", "too-samey"],
         },
-        reason: { type: Type.STRING, description: "The child's words for what is wrong." },
+        reason: { type: "string", description: "The child's words for what is wrong." },
       },
       required: ["tell"],
     },
@@ -108,9 +107,9 @@ export const JUDGE_TOOLS: FunctionDeclaration[] = [
     description:
       "Order the bot to repair the slop the child caught. Call when the child says how to fix it (e.g. 'make it real', 'give it a voice').",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
-        instruction: { type: Type.STRING, description: "The child's fix order, in their words." },
+        instruction: { type: "string", description: "The child's fix order, in their words." },
       },
       required: ["instruction"],
     },
@@ -120,10 +119,10 @@ export const JUDGE_TOOLS: FunctionDeclaration[] = [
     description:
       "Control what is on screen after a repair: the before (slop) version, the after (fixed) version, or both side by side. Call whenever the child asks to see before, go back, compare, or see them together.",
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         view: {
-          type: Type.STRING,
+          type: "string",
           description: "before = the original slop, after = the repaired page, both = side-by-side comparison.",
           enum: ["before", "after", "both"],
         },
@@ -134,13 +133,13 @@ export const JUDGE_TOOLS: FunctionDeclaration[] = [
   {
     name: "next_round",
     description: "Start a new round with a fresh page to judge. Call when the child wants another one.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
   {
     name: "end_conversation",
     description:
       "Immediately stop talking and disconnect the voice session. Call when the child says stop, shush, be quiet, that's enough, or wants you to go silent. Say NOTHING after calling this — just disconnect.",
-    parameters: { type: Type.OBJECT, properties: {} },
+    parameters: { type: "object", properties: {} },
   },
 ]
 

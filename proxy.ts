@@ -14,7 +14,7 @@ const ROOT_HOSTS = new Set([
 ])
 
 // Public without any auth check (fast path, no network call).
-const PUBLIC_PREFIXES = ["/a/", "/api/buddy", "/api/pairs"]
+const PUBLIC_PREFIXES = ["/a/", "/api/buddy"]
 
 export async function proxy(req: NextRequest) {
   const host = (req.headers.get("host") || "").split(":")[0]

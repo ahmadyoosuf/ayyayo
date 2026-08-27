@@ -6,8 +6,7 @@ import { Mascot } from "@/components/mascot"
 import { IconBack } from "@/components/icons"
 import { supabaseBrowser } from "@/lib/supabase/client"
 
-// Login only. No signup — it's invite-only while ayyayo is a hackathon
-// build; credentials ship with the supporting material.
+// Login only. No signup — invite-only prototype.
 export function LoginScreen() {
   const router = useRouter()
   const [email, setEmail] = useState("")

@@ -20,8 +20,7 @@ import {
   IconOpenTab,
 } from "@/components/icons"
 import { useTaste } from "@/hooks/use-taste"
-import { useGeminiLive } from "@/hooks/use-gemini-live"
-import { getSessionId } from "@/lib/session"
+import { useVoice } from "@/hooks/use-voice"
 import { templateFor } from "@/lib/templates"
 import { extractHtml, looksLikeHtml } from "@/lib/html"
 import { sanitizeSlug } from "@/lib/slug"
@@ -72,7 +71,7 @@ const REFINE_CHIPS = [
 export function BuildScreen() {
   const router = useRouter()
   const { count, reward } = useTaste()
-  const live = useGeminiLive()
+  const live = useVoice()
   const [html, setHtml] = useState("")
   const [building, setBuilding] = useState(false)
   const [title, setTitle] = useState("")
@@ -289,8 +288,7 @@ export function BuildScreen() {
     return true
   }, [live])
 
-  // The mic IS the Gemini Live session: Sprout hears raw audio and drives the
-  // app with tool calls. Tap chips remain a full path so voice is never a cage.
+  // Voice session: Sprout hears raw audio and drives the app with tool calls.
   const toggleLive = useCallback(() => {
     if (live.status === "live" || live.status === "connecting") {
       live.stop()
@@ -401,7 +399,7 @@ export function BuildScreen() {
             text: d.text,
             persona: d.persona || personaRef.current,
             long: d.long === true,
-            sessionId: getSessionId(),
+            slug: cardRef.current?.slug ?? undefined,
           }),
         })
         const data = await res.json()

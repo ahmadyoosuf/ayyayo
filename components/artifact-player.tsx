@@ -2,11 +2,9 @@
 
 import { useEffect, useRef } from "react"
 import type { Kind } from "@/lib/types"
-import { getSessionId } from "@/lib/session"
 
 // Full-screen live player for a shared creation. Bridges the buddy iframe to
-// the server-side Fireworks proxy, passing the slug so the per-artifact spend
-// cap is enforced.
+// the server-side LLM proxy, passing the slug so the per-artifact spend cap applies.
 export function ArtifactPlayer({
   html,
   slug,
@@ -39,7 +37,6 @@ export function ArtifactPlayer({
             persona: d.persona || persona,
             long: d.long === true,
             slug,
-            sessionId: getSessionId(),
           }),
         })
         const data = await res.json()

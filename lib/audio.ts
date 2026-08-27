@@ -1,6 +1,4 @@
-// Raw PCM helpers for the Gemini Live API.
-// Input to Gemini: 16-bit signed little-endian PCM, 16kHz, mono.
-// Output from Gemini: 16-bit signed little-endian PCM, 24kHz, mono.
+// Raw PCM helpers (legacy path; Azure Realtime uses WebRTC audio directly).
 
 export function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
   const buffer = new ArrayBuffer(input.length * 2)

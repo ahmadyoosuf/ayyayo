@@ -1,4 +1,5 @@
 import { streamCerebras } from "@/lib/cerebras"
+import { getSessionUser } from "@/lib/supabase/server"
 import { TELLS, TOPICS, CANNED_SLOP, buildSlopPrompt } from "@/lib/slop"
 
 // Node runtime — same Cloudflare-blocks-edge issue as /api/generate.
@@ -9,6 +10,9 @@ export const runtime = "nodejs"
 // from the kid until they catch it). Falls back to a canned round so the
 // Judge gym can never break on stage.
 export async function POST() {
+  const user = await getSessionUser()
+  if (!user) return new Response(JSON.stringify({ error: "sign in first" }), { status: 401 })
+
   const tell = TELLS[Math.floor(Math.random() * TELLS.length)]
   const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)]
   const encoder = new TextEncoder()

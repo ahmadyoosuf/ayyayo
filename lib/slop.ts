@@ -81,12 +81,6 @@ Everything else (layout, colors, working code) should be decent so the flaw is t
 Return the full single-file HTML document now.`
 }
 
-export function buildFixPrompt(tell: SlopTell, kidCommand: string): string {
-  return `The kid (the boss) caught the slop: this page is "${tell.grownUp}". Their order: "${kidCommand}".
-Repair it: ${tell.fix}
-Keep the same topic and general layout so the before/after is easy to see. Return the FULL updated single-file HTML document.`
-}
-
 // ── Canned fallback rounds (offline-safe, one per demo-critical tell) ──
 function cannedDoc(body: string): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${ARTIFACT_BASE_CSS}</style></head><body><div class="stage">${body}</div></body></html>`

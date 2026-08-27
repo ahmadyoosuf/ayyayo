@@ -1,6 +1,7 @@
 import { buildPrompt, streamCerebras } from "@/lib/cerebras"
 import { injectDeckExporter } from "@/lib/deck-export"
 import { templateFor } from "@/lib/templates"
+import { getSessionUser } from "@/lib/supabase/server"
 import type { Kind } from "@/lib/types"
 
 // Node runtime, NOT edge: Vercel Edge Functions run on Cloudflare Workers,
@@ -15,6 +16,9 @@ export const runtime = "nodejs"
 // for a fresh make / current HTML for a refine) streams instead, and the
 // x-ayyayo-source header says so — the client must never reward a fallback.
 export async function POST(req: Request) {
+  const user = await getSessionUser()
+  if (!user) return new Response(JSON.stringify({ error: "sign in first" }), { status: 401 })
+
   let kind: Kind = "game"
   let instruction = ""
   let baseHtml: string | undefined
