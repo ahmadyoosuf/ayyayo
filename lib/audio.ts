@@ -1,4 +1,4 @@
-// Raw PCM helpers (legacy path; Azure Realtime uses WebRTC audio directly).
+// Raw PCM helpers for Gemini Live: 16kHz mic upstream, 24kHz voice downstream.
 
 export function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
   const buffer = new ArrayBuffer(input.length * 2)
@@ -56,6 +56,7 @@ export class PcmPlayer {
   private nextTime = 0
   private sources: AudioBufferSourceNode[] = []
   private rate: number
+  onidle: (() => void) | null = null
 
   constructor(rate = 24000) {
     this.rate = rate
@@ -86,6 +87,7 @@ export class PcmPlayer {
     this.sources.push(src)
     src.onended = () => {
       this.sources = this.sources.filter((s) => s !== src)
+      if (this.sources.length === 0) this.onidle?.()
     }
   }
 

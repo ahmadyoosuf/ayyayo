@@ -24,7 +24,6 @@ import { useVoice } from "@/hooks/use-voice"
 import { templateFor } from "@/lib/templates"
 import { extractHtml, looksLikeHtml } from "@/lib/html"
 import { sanitizeSlug } from "@/lib/slug"
-import { BUILD_TOOLS, buildSystemInstruction } from "@/lib/live-tools"
 import type { Kind } from "@/lib/types"
 
 // Where a published creation lives. On the real domains every kid site gets
@@ -296,8 +295,8 @@ export function BuildScreen() {
     }
     const hasCreation = Boolean(htmlRef.current)
     live.start({
-      systemInstruction: buildSystemInstruction(hasCreation ? kindRef.current : undefined),
-      tools: BUILD_TOOLS,
+      mode: "build",
+      kind: hasCreation ? kindRef.current : undefined,
       greeting: hasCreation
         ? `The child is working on "${titleRef.current}". Say a one-sentence hello and ask what to change.`
         : "The child just opened the maker. Say a one-sentence cheerful hello and ask what they want to make.",

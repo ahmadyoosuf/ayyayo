@@ -1,14 +1,46 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import type { VoiceTool } from "@/lib/realtime-tools"
+import {
+  PcmPlayer,
+  arrayBufferToBase64,
+  base64ToInt16,
+  downsampleTo16k,
+  floatTo16BitPCM,
+} from "@/lib/audio"
 
-// Speech-to-speech voice via Azure OpenAI Realtime (WebRTC).
-// Server mints an ephemeral token; browser connects directly for low latency.
+// Native speech-to-speech via Gemini Live (raw WebSocket). The model hears the
+// mic, speaks in its own voice, and drives the app through tool calls. The
+// server mints a single-use token with the prompt and tools locked in.
 
 export type LiveStatus = "idle" | "connecting" | "live" | "error" | "unsupported"
-
+export type VoiceMode = "build" | "judge"
 export type ToolHandler = (name: string, args: Record<string, unknown>) => unknown | Promise<unknown>
+
+type StartOpts = {
+  mode: VoiceMode
+  kind?: string
+  onTool: ToolHandler
+  greeting?: string
+}
+
+type FunctionCall = { id?: string; name?: string; args?: Record<string, unknown> }
+
+type ServerMessage = {
+  setupComplete?: Record<string, never>
+  serverContent?: {
+    modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> }
+    outputTranscription?: { text?: string }
+    interrupted?: boolean
+    turnComplete?: boolean
+  }
+  toolCall?: { functionCalls?: FunctionCall[] }
+  sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean }
+  goAway?: { timeLeft?: string }
+}
+
+// Consecutive reconnects that fail before setup completes.
+const MAX_RESUMES = 3
 
 export function useVoice() {
   const [status, setStatus] = useState<LiveStatus>("idle")
@@ -17,252 +49,281 @@ export function useVoice() {
   const [muted, setMuted] = useState(false)
   const [captions, setCaptions] = useState("")
 
-  const pcRef = useRef<RTCPeerConnection | null>(null)
-  const dcRef = useRef<RTCDataChannel | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const readyRef = useRef(false)
+  const activeRef = useRef(false)
+  const optsRef = useRef<StartOpts | null>(null)
+  const handleRef = useRef<string | null>(null)
+  const resumesRef = useRef(0)
+  const goAwayRef = useRef(false)
+  const playerRef = useRef<PcmPlayer | null>(null)
+  const micCtxRef = useRef<AudioContext | null>(null)
+  const processorRef = useRef<ScriptProcessorNode | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
-  const handlerRef = useRef<ToolHandler | null>(null)
-  const startingRef = useRef(false)
+  // Text injected mid-turn makes the model answer twice over itself, so app
+  // notices wait until the current turn completes.
   const modelTurnRef = useRef(false)
   const pendingTextRef = useRef<string[]>([])
   const mutedRef = useRef(false)
   const outCaptionRef = useRef("")
 
-  const sendEvent = (event: Record<string, unknown>) => {
-    const dc = dcRef.current
-    if (!dc || dc.readyState !== "open") return
-    dc.send(JSON.stringify(event))
+  const send = (msg: Record<string, unknown>) => {
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN || !readyRef.current) return
+    ws.send(JSON.stringify(msg))
+  }
+
+  const sendTextSafely = (text: string) => {
+    if (modelTurnRef.current || !readyRef.current) {
+      pendingTextRef.current.push(text)
+      return
+    }
+    send({ realtimeInput: { text } })
   }
 
   const flushPendingText = () => {
     const queued = pendingTextRef.current
     pendingTextRef.current = []
-    for (const text of queued) {
-      sendEvent({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text }],
-        },
-      })
-      sendEvent({ type: "response.create" })
-    }
-  }
-
-  const sendTextSafely = (text: string) => {
-    if (modelTurnRef.current) {
-      pendingTextRef.current.push(text)
-      return
-    }
-    sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text }],
-      },
-    })
-    sendEvent({ type: "response.create" })
+    for (const text of queued) send({ realtimeInput: { text } })
   }
 
   const setHushed = useCallback((hush: boolean) => {
     mutedRef.current = hush
     setMuted(hush)
-    if (audioRef.current) {
-      audioRef.current.muted = hush
+    if (hush) {
+      playerRef.current?.flush()
+      setSpeaking(false)
     }
-    if (hush) setSpeaking(false)
   }, [])
 
   const stop = useCallback(() => {
+    activeRef.current = false
+    const ws = wsRef.current
+    wsRef.current = null
+    readyRef.current = false
     try {
-      dcRef.current?.close()
+      ws?.close(1000)
     } catch {}
     try {
-      pcRef.current?.close()
+      processorRef.current?.disconnect()
     } catch {}
     try {
       streamRef.current?.getTracks().forEach((t) => t.stop())
     } catch {}
     try {
-      audioRef.current?.remove()
+      micCtxRef.current?.close()
     } catch {}
-    dcRef.current = null
-    pcRef.current = null
+    playerRef.current?.close()
+    processorRef.current = null
     streamRef.current = null
-    audioRef.current = null
-    startingRef.current = false
+    micCtxRef.current = null
+    playerRef.current = null
+    optsRef.current = null
+    handleRef.current = null
+    resumesRef.current = 0
+    goAwayRef.current = false
     modelTurnRef.current = false
     pendingTextRef.current = []
     mutedRef.current = false
+    outCaptionRef.current = ""
     setMuted(false)
     setListening(false)
     setSpeaking(false)
     setStatus("idle")
   }, [])
 
-  const handleFunctionCall = async (callId: string, name: string, argsJson: string) => {
-    let args: Record<string, unknown> = {}
-    try {
-      args = JSON.parse(argsJson || "{}") as Record<string, unknown>
-    } catch {
-      args = {}
-    }
-    let result: unknown = { ok: true }
-    try {
-      result = (await handlerRef.current?.(name, args)) ?? { ok: true }
-    } catch (err) {
-      result = { ok: false, error: (err as Error).message }
-    }
-    sendEvent({
-      type: "conversation.item.create",
-      item: {
-        type: "function_call_output",
-        call_id: callId,
-        output: JSON.stringify(result),
-      },
-    })
-    sendEvent({ type: "response.create" })
-  }
-
-  const start = useCallback(
-    async (opts: {
-      systemInstruction: string
-      tools: VoiceTool[]
-      onTool: ToolHandler
-      greeting?: string
-    }) => {
-      if (typeof window === "undefined") return
-      if (startingRef.current || pcRef.current) return
-      startingRef.current = true
-
-      if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) {
-        startingRef.current = false
-        setStatus("unsupported")
-        return
-      }
-
-      handlerRef.current = opts.onTool
-      setStatus("connecting")
-      setCaptions("")
-
-      let token: string
-      let callsUrl: string
-      try {
-        const res = await fetch("/api/realtime-token", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            systemInstruction: opts.systemInstruction,
-            tools: opts.tools,
-          }),
-        })
-        if (!res.ok) throw new Error("token")
-        const data = await res.json()
-        token = data.token
-        callsUrl = data.callsUrl
-      } catch {
-        startingRef.current = false
-        setStatus("error")
-        return
-      }
-
-      try {
-        const pc = new RTCPeerConnection()
-        pcRef.current = pc
-
-        const audio = document.createElement("audio")
-        audio.autoplay = true
-        audioRef.current = audio
-
-        pc.ontrack = (event) => {
-          if (event.streams[0]) audio.srcObject = event.streams[0]
-        }
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-        })
-        streamRef.current = stream
-        for (const track of stream.getAudioTracks()) pc.addTrack(track, stream)
-
-        const dc = pc.createDataChannel("realtime-channel")
-        dcRef.current = dc
-
-        dc.addEventListener("open", () => {
-          setStatus("live")
-          setListening(true)
-          startingRef.current = false
-          if (opts.greeting) sendTextSafely(opts.greeting)
-        })
-
-        dc.addEventListener("message", (event) => {
-          let msg: Record<string, unknown>
-          try {
-            msg = JSON.parse(String(event.data)) as Record<string, unknown>
-          } catch {
-            return
-          }
-          const type = String(msg.type ?? "")
-
-          if (type === "output_audio_buffer.started") {
-            modelTurnRef.current = true
-            if (!mutedRef.current) setSpeaking(true)
-          }
-          if (type === "output_audio_buffer.stopped") {
-            modelTurnRef.current = false
-            setSpeaking(false)
-            flushPendingText()
-          }
-
-          if (type === "response.output_audio_transcript.delta") {
-            const delta = (msg as { delta?: string }).delta
-            if (delta) {
-              outCaptionRef.current += delta
-              setCaptions(outCaptionRef.current)
-            }
-          }
-          if (type === "response.output_audio_transcript.done") {
-            outCaptionRef.current = ""
-          }
-
-          if (type === "response.function_call_arguments.done") {
-            const m = msg as { call_id?: string; name?: string; arguments?: string }
-            if (m.call_id && m.name) {
-              void handleFunctionCall(m.call_id, m.name, m.arguments ?? "{}")
-            }
-          }
-
-          if (type === "error") {
-            setStatus("error")
-          }
-        })
-
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-
-        const sdpRes = await fetch(callsUrl, {
-          method: "POST",
-          body: offer.sdp,
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/sdp",
-          },
-        })
-        if (!sdpRes.ok) throw new Error("sdp")
-        const answerSdp = await sdpRes.text()
-        await pc.setRemoteDescription({ type: "answer", sdp: answerSdp })
-      } catch (err) {
-        console.error("[ayyayo] voice connect error:", (err as Error).message)
-        stop()
-        setStatus("error")
-      }
+  const fail = useCallback(
+    (reason: string) => {
+      console.error("[ayyayo] voice error:", reason)
+      stop()
+      setStatus("error")
     },
     [stop],
   )
 
+  const runTools = async (calls: FunctionCall[]) => {
+    const functionResponses = []
+    for (const call of calls) {
+      let result: unknown = { ok: true }
+      try {
+        result = (await optsRef.current?.onTool(call.name ?? "", call.args ?? {})) ?? { ok: true }
+      } catch (err) {
+        result = { ok: false, error: (err as Error).message }
+      }
+      functionResponses.push({ id: call.id, name: call.name, response: { result } })
+    }
+    send({ toolResponse: { functionResponses } })
+  }
+
+  const onMessage = (ws: WebSocket, msg: ServerMessage) => {
+    if (ws !== wsRef.current) return
+
+    if (msg.setupComplete) {
+      const resumed = handleRef.current !== null
+      readyRef.current = true
+      resumesRef.current = 0
+      setStatus("live")
+      setListening(true)
+      if (!resumed && optsRef.current?.greeting) sendTextSafely(optsRef.current.greeting)
+      if (!modelTurnRef.current) flushPendingText()
+      return
+    }
+
+    if (msg.sessionResumptionUpdate?.resumable && msg.sessionResumptionUpdate.newHandle) {
+      handleRef.current = msg.sessionResumptionUpdate.newHandle
+    }
+
+    if (msg.goAway) {
+      if (modelTurnRef.current) goAwayRef.current = true
+      else resume()
+      return
+    }
+
+    const content = msg.serverContent
+    if (content?.interrupted) {
+      playerRef.current?.flush()
+      modelTurnRef.current = false
+      setSpeaking(false)
+    }
+    for (const part of content?.modelTurn?.parts ?? []) {
+      const data = part.inlineData?.data
+      if (!data) continue
+      modelTurnRef.current = true
+      if (!mutedRef.current) {
+        playerRef.current?.enqueue(base64ToInt16(data))
+        setSpeaking(true)
+      }
+    }
+    const said = content?.outputTranscription?.text
+    if (said) {
+      outCaptionRef.current += said
+      setCaptions(outCaptionRef.current)
+    }
+    if (content?.turnComplete) {
+      outCaptionRef.current = ""
+      modelTurnRef.current = false
+      if (goAwayRef.current) {
+        resume()
+        return
+      }
+      flushPendingText()
+    }
+
+    const calls = msg.toolCall?.functionCalls
+    if (calls?.length) void runTools(calls)
+  }
+
+  const onClose = (ws: WebSocket, ev: CloseEvent) => {
+    if (ws !== wsRef.current) return
+    wsRef.current = null
+    readyRef.current = false
+    if (!activeRef.current) return
+    if (handleRef.current && resumesRef.current < MAX_RESUMES) {
+      resume()
+      return
+    }
+    fail(`closed ${ev.code} ${ev.reason}`)
+  }
+
+  const connect = async () => {
+    const opts = optsRef.current
+    if (!opts) return
+    const res = await fetch("/api/live-token", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: opts.mode, kind: opts.kind, handle: handleRef.current }),
+    })
+    if (!res.ok) throw new Error(`token ${res.status}`)
+    const { token, model, url } = (await res.json()) as { token: string; model: string; url: string }
+    if (!activeRef.current) return
+
+    const ws = new WebSocket(`${url}?access_token=${encodeURIComponent(token)}`)
+    ws.binaryType = "arraybuffer"
+    wsRef.current = ws
+    readyRef.current = false
+    const decoder = new TextDecoder()
+    ws.onopen = () => ws.send(JSON.stringify({ setup: { model } }))
+    ws.onmessage = (ev) => {
+      const raw = typeof ev.data === "string" ? ev.data : decoder.decode(ev.data as ArrayBuffer)
+      try {
+        onMessage(ws, JSON.parse(raw) as ServerMessage)
+      } catch {}
+    }
+    ws.onclose = (ev) => onClose(ws, ev)
+  }
+
+  // Reconnect onto the same conversation using the latest resumption handle.
+  const resume = () => {
+    goAwayRef.current = false
+    resumesRef.current += 1
+    modelTurnRef.current = false
+    const old = wsRef.current
+    wsRef.current = null
+    readyRef.current = false
+    try {
+      old?.close(1000)
+    } catch {}
+    connect().catch((err) => fail((err as Error).message))
+  }
+
+  const start = useCallback(
+    async (opts: StartOpts) => {
+      if (typeof window === "undefined") return
+      if (activeRef.current) return
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      if (!navigator.mediaDevices?.getUserMedia || !Ctx || typeof WebSocket === "undefined") {
+        setStatus("unsupported")
+        return
+      }
+
+      activeRef.current = true
+      optsRef.current = opts
+      handleRef.current = null
+      resumesRef.current = 0
+      setStatus("connecting")
+      setCaptions("")
+
+      // Both audio contexts are created inside the tap so autoplay rules allow them.
+      const player = new PcmPlayer(24000)
+      player.onidle = () => setSpeaking(false)
+      playerRef.current = player
+      const micCtx = new Ctx()
+      micCtxRef.current = micCtx
+
+      try {
+        await Promise.all([player.resume(), micCtx.resume()])
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        })
+        if (!activeRef.current) {
+          stream.getTracks().forEach((t) => t.stop())
+          return
+        }
+        streamRef.current = stream
+
+        const source = micCtx.createMediaStreamSource(stream)
+        const processor = micCtx.createScriptProcessor(2048, 1, 1)
+        processorRef.current = processor
+        source.connect(processor)
+        processor.connect(micCtx.destination)
+        processor.onaudioprocess = (e) => {
+          if (!readyRef.current) return
+          const pcm = floatTo16BitPCM(downsampleTo16k(e.inputBuffer.getChannelData(0), micCtx.sampleRate))
+          send({ realtimeInput: { audio: { data: arrayBufferToBase64(pcm), mimeType: "audio/pcm;rate=16000" } } })
+        }
+
+        await connect()
+      } catch (err) {
+        fail((err as Error).message)
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [fail],
+  )
+
   const tellModel = useCallback((text: string) => {
     sendTextSafely(text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { status, speaking, listening, muted, setHushed, captions, start, stop, tellModel }

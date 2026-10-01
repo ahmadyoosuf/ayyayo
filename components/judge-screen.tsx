@@ -9,7 +9,6 @@ import { MicButton } from "@/components/mic-button"
 import { IconBack, IconCheck, IconEye, IconHush, IconSound } from "@/components/icons"
 import { useTaste } from "@/hooks/use-taste"
 import { useVoice } from "@/hooks/use-voice"
-import { JUDGE_TOOLS, JUDGE_SYSTEM_INSTRUCTION } from "@/lib/live-tools"
 import { TELLS, tellById } from "@/lib/slop"
 import { extractHtml, looksLikeHtml } from "@/lib/html"
 
@@ -193,8 +192,7 @@ export function JudgeScreen() {
       return
     }
     live.start({
-      systemInstruction: JUDGE_SYSTEM_INSTRUCTION,
-      tools: JUDGE_TOOLS,
+      mode: "judge",
       greeting:
         "The child opened the De-Slop gym. A page made by an AI is on screen with one hidden flaw. Say a one-sentence hello and ask if the page feels right or if something is off.",
       onTool: async (name, args) => {

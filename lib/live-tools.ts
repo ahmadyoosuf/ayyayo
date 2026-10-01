@@ -1,7 +1,11 @@
-import type { VoiceTool } from "@/lib/realtime-tools"
-
-// Actions the Realtime voice model can take to drive the app.
+// Actions the Gemini Live voice model can take to drive the app.
 // The model hears raw voice and decides which tool to call.
+
+export interface VoiceTool {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
 
 export const BUILD_TOOLS: VoiceTool[] = [
   {
@@ -153,6 +157,7 @@ export function buildSystemInstruction(kind?: string) {
     "The creation appears and updates LIVE on the child's screen while it is built. After you call a tool, the app will tell you what really happened — only say a change is done when the app confirms it. If the app says it is still building, ask the child to watch it appear.",
     "Encourage their taste: ask 'what would make it even better?' and celebrate their choices. Keep it kind and fun.",
     "If the child tells you to stop, be quiet, or that's enough, call end_conversation right away and say nothing else.",
+    "Never call the same tool more than twice in a row. If a tool keeps failing, tell the child kindly and ask what to try instead.",
     kind ? `Right now they are working on a ${kind}.` : "",
   ]
     .filter(Boolean)
@@ -167,4 +172,5 @@ export const JUDGE_SYSTEM_INSTRUCTION =
   "If the app says not quite, encourage them to look again — never reveal the answer. " +
   "After a fix, the repaired page appears — point out how much better it is because of THEIR call. The child controls the screen by voice: if they ask to see the before version, go back, or compare side by side, call show_view. When they want another, call next_round. " +
   "Speak in short, cheerful, simple sentences. Never read code, URLs, or technical words. " +
-  "If the child tells you to stop, be quiet, or that's enough, call end_conversation right away and say nothing else."
+  "If the child tells you to stop, be quiet, or that's enough, call end_conversation right away and say nothing else. " +
+  "Never call the same tool more than twice in a row."
