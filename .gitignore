@@ -22,8 +22,9 @@ node_modules
 repomix-output*
 *.tsbuildinfo
 
-# Pitch deck artifacts (script lives in scripts/make-deck.mjs)
+# Old pitch deck artifacts
 ayyayo-deck.pptx
 scripts/deck-preview/
 demos/
 .env*
+!.env.example

@@ -9,9 +9,10 @@ import {
   floatTo16BitPCM,
 } from "@/lib/audio"
 
-// Native speech-to-speech via Gemini Live (raw WebSocket). The model hears the
+// Native speech-to-speech via Gemini Live on Vertex AI. The model hears the
 // mic, speaks in its own voice, and drives the app through tool calls. The
-// server mints a single-use token with the prompt and tools locked in.
+// browser connects to our /api/live relay, which holds the key and sets the
+// prompt and tools.
 
 export type LiveStatus = "idle" | "connecting" | "live" | "error" | "unsupported"
 export type VoiceMode = "build" | "judge"
@@ -227,22 +228,17 @@ export function useVoice() {
 
   const connect = async () => {
     const opts = optsRef.current
-    if (!opts) return
-    const res = await fetch("/api/live-token", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode: opts.mode, kind: opts.kind, handle: handleRef.current }),
-    })
-    if (!res.ok) throw new Error(`token ${res.status}`)
-    const { token, model, url } = (await res.json()) as { token: string; model: string; url: string }
-    if (!activeRef.current) return
+    if (!opts || !activeRef.current) return
+    const params = new URLSearchParams({ mode: opts.mode })
+    if (opts.kind) params.set("kind", opts.kind)
+    if (handleRef.current) params.set("handle", handleRef.current)
+    const scheme = window.location.protocol === "https:" ? "wss" : "ws"
 
-    const ws = new WebSocket(`${url}?access_token=${encodeURIComponent(token)}`)
+    const ws = new WebSocket(`${scheme}://${window.location.host}/api/live?${params}`)
     ws.binaryType = "arraybuffer"
     wsRef.current = ws
     readyRef.current = false
     const decoder = new TextDecoder()
-    ws.onopen = () => ws.send(JSON.stringify({ setup: { model } }))
     ws.onmessage = (ev) => {
       const raw = typeof ev.data === "string" ? ev.data : decoder.decode(ev.data as ArrayBuffer)
       try {

@@ -6,7 +6,7 @@ Voice-to-code for kids. They speak, software appears, they refine it, it ships t
 
 - **Supabase** — auth, database, storage
 - **Vercel** — hosting, functions, wildcard DNS (`*.ayyayo.app`)
-- **Gemini Live** — native speech-to-speech voice (`gemini-3.8-live`)
+- **Gemini Live on Vertex AI** — native speech-to-speech voice (`gemini-3.8-live`), relayed through `/api/live`
 - **Cerebras** — fast HTML codegen (`gpt-oss-120b`)
 - **Azure Foundry / Fireworks** — in-app buddy replies (`gpt-oss-120b`)
 
